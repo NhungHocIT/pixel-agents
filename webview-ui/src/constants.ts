@@ -152,6 +152,10 @@ export const CHAT_LINE_MAX_SEC = 5;
 /** Pause after a chat before the same patron starts another. */
 export const CHAT_COOLDOWN_MIN_SEC = 4;
 export const CHAT_COOLDOWN_MAX_SEC = 10;
+/** Passing someone on the way: only right next to them, and then not again for a while. */
+export const CHAT_STREET_RANGE_TILES = 1;
+export const CHAT_STREET_COOLDOWN_MIN_SEC = 30;
+export const CHAT_STREET_COOLDOWN_MAX_SEC = 60;
 export const SPEECH_TEXT_COLOR = '#1E1E28';
 export const SPEECH_BG_COLOR = '#FFFFFF';
 export const SPEECH_FONT_PX = 16;

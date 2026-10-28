@@ -82,6 +82,8 @@ import { startChat, updateChats } from './barChat.js';
 import { createPatron, isPatron, sendPatronToRest, tickPatronSchedule } from './barPatrons.js';
 import { characterNameOf, storyAnchorName, storySyncName, storyTiesOf } from './barStory.js';
 import { characterDrawOffsetPx, createCharacter, updateCharacter } from './characters.js';
+import type { ChatPlace } from './dialogues.js';
+import { waiterDialogue } from './dialogues.js';
 import type { ExerciseSession } from './exercise.js';
 import {
   beginWorkout,
@@ -97,7 +99,7 @@ import { advanceMatrixEffect, startMatrixEffect } from './matrixEffectState.js';
 import { createPet, updatePet } from './petEntity.js';
 import { anchorTile, closestFreeSeat } from './seatPlacement.js';
 import type { WaiterRound } from './waiter.js';
-import { isServable, newWaiterRound, serveSpots, serviceLines } from './waiter.js';
+import { isServable, newWaiterRound, serveSpots } from './waiter.js';
 import { startWalk, stepWalk } from './walking.js';
 
 /** Palettes of the staff — the boss (the user's avatar) and the waiter —
@@ -482,7 +484,8 @@ export class OfficeState {
         this.servedAt.set(customer, this.clockSec);
         const busy = new Set(this.chats.flatMap((c) => c.speakers));
         if (!busy.has(customer) && !busy.has(w)) {
-          this.chats.push(startChat([w, customer], serviceLines(customer)));
+          const place = this.placeOfOne(customer);
+          this.chats.push(startChat([w, customer], waiterDialogue(place), place));
         }
         return;
       }
@@ -829,11 +832,53 @@ export class OfficeState {
       characterNameOf,
       dt,
       (a, b) => !this.isWaiter(a) && !this.isWaiter(b),
+      (a, b) => this.chatPlace(a, b),
     );
     const talking = new Set(talkers);
     for (const ch of [...this.characters.values(), ...this.patrons]) {
       if (!talking.has(ch)) ch.speech = null;
     }
+  }
+
+  /** Where a pair is chatting: the sofa or the game room if either is there, else the bar. */
+  private chatPlace(a: Character, b: Character): ChatPlace {
+    const places = [this.placeOfOne(a), this.placeOfOne(b)];
+    if (places.includes('sofa')) return 'sofa';
+    if (places.includes('game')) return 'game';
+    return 'bar';
+  }
+
+  private placeOfOne(ch: Character): ChatPlace {
+    if (ch.onSofa) return 'sofa';
+    if (ch.state === CharacterState.GAME) return 'game';
+    const floor = this.tileMap[ch.tileRow]?.[ch.tileCol];
+    const gameRoom = this.restSpots.some(
+      (s) => s.kind === 'game' && this.tileMap[s.row]?.[s.col] === floor,
+    );
+    return gameRoom ? 'game' : 'bar';
+  }
+
+  /** Walkers who bumped into someone stop for the hello (see barChat 'street'
+   *  chats): partner by walker, for this frame. */
+  private heldForHello(): Map<Character, Character> {
+    const held = new Map<Character, Character>();
+    for (const chat of this.chats) {
+      if (chat.place !== 'street') continue;
+      const [a, b] = chat.speakers;
+      if (a.state === CharacterState.WALK) held.set(a, b);
+      if (b.state === CharacterState.WALK) held.set(b, a);
+    }
+    return held;
+  }
+
+  /** Stand still mid-way, turned to the one being greeted. */
+  private holdForHello(ch: Character, partner: Character): void {
+    ch.frame = 1;
+    ch.frameTimer = 0;
+    const dx = partner.x - ch.x;
+    const dy = partner.y - ch.y;
+    if (Math.abs(dx) >= Math.abs(dy)) ch.dir = dx >= 0 ? Direction.RIGHT : Direction.LEFT;
+    else ch.dir = dy >= 0 ? Direction.DOWN : Direction.UP;
   }
 
   /** A drawn character (visible patron or agent) by storyline name. */
@@ -1900,6 +1945,7 @@ export class OfficeState {
 
     if (!this.exercise && Date.now() >= this.nextExerciseAt) this.startExercise();
     const inLine = new Set(this.exercise?.members);
+    const held = this.heldForHello();
 
     const toDelete: number[] = [];
     for (const ch of this.characters.values()) {
@@ -1909,8 +1955,11 @@ export class OfficeState {
         continue; // skip normal FSM while the effect is (or just was) active
       }
 
+      const partner = held.get(ch);
       if (inLine.has(ch)) {
         updateExerciser(ch, dt);
+      } else if (partner) {
+        this.holdForHello(ch, partner);
       } else {
         this.updateRestAssignment(ch);
 
@@ -1953,7 +2002,9 @@ export class OfficeState {
         p.restSpot = null;
         continue;
       }
+      const partner = held.get(p);
       if (inLine.has(p)) updateExerciser(p, dt);
+      else if (partner) this.holdForHello(p, partner);
       else if (this.isWaiter(p)) this.updateWaiter(p, dt);
       else this.updatePatron(p, dt);
     }

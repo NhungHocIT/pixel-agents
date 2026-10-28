@@ -6,10 +6,12 @@ import {
 } from '../../constants.js';
 import type { Character } from '../types.js';
 import { CharacterState, Direction } from '../types.js';
+import type { ExerciseMoveName } from './dialogues.js';
+import { EXERCISE, randomOf } from './dialogues.js';
 import { snapToTile, startWalk, stepWalk } from './walking.js';
 
 /** The moves of a workout, each held for EXERCISE_MOVE_SEC, then the next. */
-export type ExerciseMove = 'jump' | 'twist' | 'squat' | 'march';
+export type ExerciseMove = ExerciseMoveName;
 const MOVES: ExerciseMove[] = ['jump', 'twist', 'squat', 'march'];
 
 /** An exercise break in progress: everyone walks to the line (gather), then
@@ -25,47 +27,8 @@ export interface ExerciseSession {
   chatTimer: number;
 }
 
-const GATHER_CALLS = [
-  'Tới giờ tập thể dục rồi mọi người ơi! 💪',
-  'Đứng dậy nào, xếp hàng ngay ngắn!',
-  'Rời bàn phím 10 phút thôi, nhanh lên!',
-  'Ai chậm nhất tối nay rửa ly nhé 😏',
-];
-const GATHER_REPLIES = [
-  'Lại tới giờ rồi à 😩',
-  'Đợi em save file đã!',
-  'Vừa ngồi xuống mà...',
-  'Ok sếp, ra liền!',
-  'Tập xong được nghỉ không sếp?',
-  'Yay, giãn gân cốt thôi 🙆',
-];
-const MOVE_CALLS: Record<ExerciseMove, readonly string[]> = {
-  jump: ['Bật nhảy! Một, hai, ba, bốn!', 'Cao lên nữa nào! 🦘', 'Nhảy dứt khoát, đừng lười!'],
-  twist: ['Vặn hông sang trái... sang phải!', 'Xoay người hết cỡ nào!', 'Thả lỏng vai, xoay đều!'],
-  squat: ['Squat xuống... đứng lên!', 'Lưng thẳng, hạ thấp nữa!', 'Thêm 10 cái nữa thôi 🔥'],
-  march: ['Giậm chân tại chỗ... một, hai!', 'Nâng gối cao lên!', 'Đều chân nào, một hai một hai!'],
-};
-const WORKOUT_REPLIES = [
-  'Mỏi chân quá sếp ơi 🥵',
-  'Hít thở đều nào...',
-  'Một, hai, ba, bốn!',
-  'Ngồi code cả ngày, giờ mới thấy lưng 😵',
-  'Sướng ghê, tỉnh cả người!',
-  'Còn bao lâu nữa vậy sếp?',
-  'Tập xong uống bia được không? 🍺',
-  'Mai em đau cơ chắc luôn',
-  'Sếp tập cùng đi chứ!',
-  'Cố lên, sắp xong rồi! 💪',
-  'Mồ hôi ướt hết áo rồi 💦',
-  'Em thấy khoẻ ra hẳn!',
-];
-const COACH_FINISH = 'Tốt lắm! Uống nước rồi về làm việc nhé 👏';
 /** Seconds each round of calls and replies stays up. */
 const EXERCISE_CHAT_SEC = 4;
-
-function randomOf<T>(list: readonly T[]): T {
-  return list[Math.floor(Math.random() * list.length)];
-}
 
 /** Speech during the break: the coach calls (or, with no boss here, whoever
  *  leads the line) and one or two others answer now and then. */
@@ -78,19 +41,19 @@ export function updateExerciseChatter(ex: ExerciseSession, dt: number): void {
   if (!leader) return;
   const others = ex.members.filter((ch) => ch !== leader);
   if (ex.phase === 'gather') {
-    leader.speech = randomOf(GATHER_CALLS);
-    if (others.length > 0) randomOf(others).speech = randomOf(GATHER_REPLIES);
+    leader.speech = randomOf(EXERCISE.gatherCalls);
+    if (others.length > 0) randomOf(others).speech = randomOf(EXERCISE.gatherReplies);
     return;
   }
   if (ex.timer >= EXERCISE_WORKOUT_SEC - EXERCISE_CHAT_SEC) {
-    leader.speech = COACH_FINISH; // the last round: wrap up
+    leader.speech = EXERCISE.finish; // the last round: wrap up
     return;
   }
-  leader.speech = randomOf(MOVE_CALLS[exerciseMove(leader).move]);
+  leader.speech = randomOf(EXERCISE.moveCalls[exerciseMove(leader).move]);
   for (let i = 0; i < 2 && others.length > 0; i++) {
     if (Math.random() < 0.5) continue;
     const who = others.splice(Math.floor(Math.random() * others.length), 1)[0];
-    who.speech = randomOf(WORKOUT_REPLIES);
+    who.speech = randomOf(EXERCISE.workoutReplies);
   }
 }
 
