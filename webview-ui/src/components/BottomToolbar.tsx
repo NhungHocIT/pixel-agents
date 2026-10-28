@@ -38,6 +38,10 @@ export function BottomToolbar({
 }: BottomToolbarProps) {
   const [isDrawerOpen, setIsDrawerOpen] = useState(false);
   const launchRef = useRef<HTMLDivElement>(null);
+  // Folded to one small button so the toolbar doesn't cover the office. Kept
+  // open while Layout or Settings is on, so the button that turns it off stays.
+  const [isExpanded, setIsExpanded] = useState(false);
+  const showButtons = isExpanded || isEditMode || isSettingsOpen;
 
   // Close the launch drawer on outside press (the dropdown convention here).
   useEffect(() => {
@@ -74,7 +78,15 @@ export function BottomToolbar({
     // Bottom-left. The terminal panel docks on the right edge, so it never
     // reaches these buttons and no lift is needed.
     <div className="absolute left-10 bottom-10 z-20 flex items-center gap-4 pixel-panel p-4">
-      {showUnavailable && (
+      <Button
+        variant={showButtons ? 'active' : 'default'}
+        onClick={() => setIsExpanded((v) => !v)}
+        title={showButtons ? 'Hide toolbar' : 'Show toolbar'}
+        data-testid="toolbar-toggle"
+      >
+        {showButtons ? '«' : '☰'}
+      </Button>
+      {showButtons && showUnavailable && (
         <Button
           variant="disabled"
           disabled
@@ -83,7 +95,7 @@ export function BottomToolbar({
           + Agent
         </Button>
       )}
-      {canLaunch && (
+      {showButtons && canLaunch && (
         <div
           ref={launchRef}
           className="relative"
@@ -114,25 +126,29 @@ export function BottomToolbar({
           />
         </div>
       )}
-      {terminalAvailable && onOpenTerminal && (
+      {showButtons && terminalAvailable && onOpenTerminal && (
         <Button onClick={onOpenTerminal} title="Open the cmd terminal">
           cmd
         </Button>
       )}
-      <Button
-        variant={isEditMode ? 'active' : 'default'}
-        onClick={onToggleEditMode}
-        title="Edit office layout"
-      >
-        Layout
-      </Button>
-      <Button
-        variant={isSettingsOpen ? 'active' : 'default'}
-        onClick={onToggleSettings}
-        title="Settings"
-      >
-        Settings
-      </Button>
+      {showButtons && (
+        <>
+          <Button
+            variant={isEditMode ? 'active' : 'default'}
+            onClick={onToggleEditMode}
+            title="Edit office layout"
+          >
+            Layout
+          </Button>
+          <Button
+            variant={isSettingsOpen ? 'active' : 'default'}
+            onClick={onToggleSettings}
+            title="Settings"
+          >
+            Settings
+          </Button>
+        </>
+      )}
     </div>
   );
 }
