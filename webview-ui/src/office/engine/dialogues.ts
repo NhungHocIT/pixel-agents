@@ -329,6 +329,8 @@ const INVITE_YES: Record<InviteTo, readonly Script[]> = {
     ['Ra sân làm vài trận pickleball đi', 'Ok, thua bao nước nha!'],
     ['Ngồi lâu mỏi lưng, đi đánh pickleball không?', 'Đi, khởi động thôi 💪'],
     ['Solo pickleball không?', 'Sợ gì, ra sân!'],
+    ['Rủ thêm 2 người đánh đôi pickleball đi!', 'Ok, tui với ông một đội nha!'],
+    ['Đánh đôi pickleball không? Tụi mình một đội', 'Chơi! Gọi thêm 2 đứa nữa 🏓'],
   ],
 };
 const INVITE_NO: Record<InviteTo, readonly Script[]> = {
@@ -396,6 +398,24 @@ export const PICKLEBALL = {
     ['Ối, trúng lưới 😩', 'Haha, điểm của tui!'],
     ['Sân này đẹp ghê', 'TNhunn mới làm đó, xịn chưa'],
   ] as readonly Script[],
+  /** Doubles: a word with the partner on the same side. */
+  partners: [
+    ['Của ông đó!', 'Ok, để tui!'],
+    ['Bóng giữa kìa, ai đỡ?', 'Tui! Tui!'],
+    ['Lên lưới đi, tui giữ phía sau', 'Ok, yểm trợ nha 💪'],
+    ['Đánh vào người bên trái, yếu tay trái lắm 🤫', 'Rõ, đánh vào đó!'],
+    ['Đẹp lắm partner! ✋', 'Đập tay cái! ✋'],
+    ['Xin lỗi, hụt mất 😅', 'Không sao, gỡ lại liền!'],
+    ['Đổi bên không?', 'Thôi, đang thuận tay mà'],
+  ] as readonly Script[],
+  /** Called over to make up a doubles game, on the way to the court. */
+  join: [
+    'Cho tui chơi với! 🏓',
+    'Thiếu người hả? Có tui!',
+    'Đánh đôi hả, vô liền!',
+    'Ok, ra sân ngay!',
+    'Tui đánh với ai đây?',
+  ],
   /** Time up: one wraps up, the other answers. */
   finish: [
     ['Hay quá, mai đánh tiếp! 🏓', 'Ok, mai phục thù!'],

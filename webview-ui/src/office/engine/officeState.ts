@@ -88,7 +88,7 @@ import { createPatron, isPatron, sendPatronToRest, tickPatronSchedule } from './
 import { characterNameOf, storyAnchorName, storySyncName, storyTiesOf } from './barStory.js';
 import { characterDrawOffsetPx, createCharacter, updateCharacter } from './characters.js';
 import type { ChatPlace, InviteTo } from './dialogues.js';
-import { randomOf, waiterDialogue } from './dialogues.js';
+import { PICKLEBALL, randomOf, waiterDialogue } from './dialogues.js';
 import type { ExerciseSession } from './exercise.js';
 import {
   beginWorkout,
@@ -105,7 +105,7 @@ import { createPet, updatePet } from './petEntity.js';
 import type { PickleballCourt, PickleballGame } from './pickleball.js';
 import {
   ballInstances,
-  courtSides,
+  courtSpots,
   endPickleball,
   startPickleball,
   updatePickleball,
@@ -115,7 +115,7 @@ import type { WaiterRound } from './waiter.js';
 import { isServable, newWaiterRound, serveSpots } from './waiter.js';
 import { startWalk, stepWalk } from './walking.js';
 
-/** Palettes of TNhunn (the user's avatar, owner of the agents) and the waiter —
+/** Palettes of TNhunn (the user's avatar, owner of the agents) and the waiter â€”
  *  never given to an agent. */
 const STAFF_PALETTES = new Set(
   [USER_AVATAR_NAME, WAITER_NAME].map((n) => CHARACTER_NAMES.indexOf(n)).filter((i) => i >= 0),
@@ -151,7 +151,7 @@ export class OfficeState {
     for (const listener of this.selectionListeners) listener(id);
   }
   /** Observe selectedAgentId changes. React (the card bars) subscribes so
-   *  imperative canvas selection can drive card highlights — everything else
+   *  imperative canvas selection can drive card highlights â€” everything else
    *  about selection stays out of React state. Returns the unsubscribe. */
   subscribeSelection(listener: (id: number | null) => void): () => void {
     this.selectionListeners.add(listener);
@@ -160,14 +160,14 @@ export class OfficeState {
   cameraFollowId: number | null = null;
   hoveredAgentId: number | null = null;
   hoveredTile: { col: number; row: number } | null = null;
-  /** Maps "parentId:toolId" → sub-agent character ID (negative) */
+  /** Maps "parentId:toolId" â†’ sub-agent character ID (negative) */
   subagentIdMap: Map<string, number> = new Map();
-  /** Reverse lookup: sub-agent character ID → parent info */
+  /** Reverse lookup: sub-agent character ID â†’ parent info */
   subagentMeta: Map<number, { parentAgentId: number; parentToolId: string }> = new Map();
   private nextSubagentId = -1;
 
   /**
-   * directoryName → list of Area labels that Directory belongs to.
+   * directoryName â†’ list of Area labels that Directory belongs to.
    * Populated by useExtensionMessages on `areaMappingsLoaded`. Consulted by
    * `findFreeSeat()` to bias new agents toward seats inside their Directory's Area.
    */
@@ -176,9 +176,9 @@ export class OfficeState {
   /**
    * The first-run consent greeter, deliberately NOT in `characters`.
    *
-   * `characters` means "agents": everything that iterates it — seat
+   * `characters` means "agents": everything that iterates it â€” seat
    * assignment, palette diversity, the wander FSM, hit-testing, the seat
-   * payload the webview persists — is asking an agent question the greeter has
+   * payload the webview persists â€” is asking an agent question the greeter has
    * no answer to. Holding it here instead of tagging it with a flag makes
    * every one of those loops correct by default, rather than correct as long
    * as each remembers an `isGreeter` guard. It is drawn because
@@ -474,7 +474,7 @@ export class OfficeState {
     return isPatron(ch) && characterNameOf(ch) === WAITER_NAME;
   }
 
-  /** The waiter's rounds: counter → a customer's side → a word with them → counter. */
+  /** The waiter's rounds: counter â†’ a customer's side â†’ a word with them â†’ counter. */
   private updateWaiter(w: Character, dt: number): void {
     w.frameTimer += dt;
     w.seatId = null;
@@ -800,7 +800,7 @@ export class OfficeState {
 
   /** Now and then a new chat is `a` asking `b` along. Patrons: for a beer (a
    *  table with two free seats), to the sofa (unless one is on it), or to play
-   *  pickleball (the court is free) — idle agents only to pickleball. Never
+   *  pickleball (the court is free) â€” idle agents only to pickleball. Never
    *  between two already drinking at one table. Null: just a chat. */
   private inviteOf(a: Character, b: Character): ChatInvite | null {
     const patrons = this.canBeInvited(a) && this.canBeInvited(b);
@@ -852,23 +852,57 @@ export class OfficeState {
     return { col: item.col, row: item.row, w: entry.footprintW, h: entry.footprintH };
   }
 
-  /** Off to the court: whoever is nearer the left side takes it. Both leave
-   *  bed or sofa; a patron also drops its seat and schedule until the game
-   *  ends (an agent keeps its desk). */
+  /** Off to the court. `a` and `b` team up and call over the two nearest the
+   *  court who are free to play (not drinking with someone) to make it
+   *  doubles; without two of them it's singles, `a` against `b`. Each team
+   *  takes the side nearer to it. Everyone leaves bed or sofa; a patron also
+   *  drops its seat and schedule until the game ends (an agent keeps its desk). */
   private startPickleballGame(a: Character, b: Character): void {
     const court = this.court();
     if (!court || this.pickleball || this.exercise) return;
-    const [left, right] = courtSides(court);
-    const dist = (ch: Character, t: { col: number; row: number }) =>
+    type Tile = { col: number; row: number };
+    const dist = (ch: Character, t: Tile) =>
       Math.abs(ch.tileCol - t.col) + Math.abs(ch.tileRow - t.row);
-    const players: [Character, Character] =
-      dist(a, left) + dist(b, right) <= dist(b, left) + dist(a, right) ? [a, b] : [b, a];
-    const sides = [left, right];
-    const paths = players.map((ch, i) =>
-      findPath(ch.tileCol, ch.tileRow, sides[i].col, sides[i].row, this.tileMap, this.blockedTiles),
-    ) as [Array<{ col: number; row: number }>, Array<{ col: number; row: number }>];
+    const pathTo = (ch: Character, t: Tile) =>
+      findPath(ch.tileCol, ch.tileRow, t.col, t.row, this.tileMap, this.blockedTiles);
+    const mid = {
+      col: court.col + Math.floor(court.w / 2),
+      row: court.row + Math.floor(court.h / 2),
+    };
+    const recruits = this.getDrawnCharacters()
+      .filter(
+        (ch) =>
+          ch !== a &&
+          ch !== b &&
+          this.canPlay(ch) &&
+          this.tablemates(ch).length === 0 &&
+          (dist(ch, mid) === 0 || pathTo(ch, mid).length > 0),
+      )
+      .sort((x, y) => dist(x, mid) - dist(y, mid))
+      .slice(0, 2);
+    const doubles = recruits.length === 2;
+    const [first, second] = doubles ? [[a, b], recruits] : [[a], [b]];
+    const spots = courtSpots(court, first.length);
+    const away = (team: Character[], side: Tile[]) =>
+      team.reduce((sum, ch) => sum + dist(ch, side[0]), 0);
+    const teams: [Character[], Character[]] =
+      away(first, spots[0]) + away(second, spots[1]) <=
+      away(second, spots[0]) + away(first, spots[1])
+        ? [first, second]
+        : [second, first];
+    // Partners split the side: the one higher up takes the top spot
+    const spotOf = new Map<Character, Tile>();
+    teams.forEach((team, side) =>
+      [...team]
+        .sort((x, y) => x.tileRow - y.tileRow)
+        .forEach((ch, i) => spotOf.set(ch, spots[side][i])),
+    );
+    const players = [...teams[0], ...teams[1]];
+    const paths = players.map((ch) => pathTo(ch, spotOf.get(ch)!));
     // No way onto the court from where one of them is: no game
-    if (paths.some((p, i) => p.length === 0 && dist(players[i], sides[i]) > 0)) return;
+    if (paths.some((p, i) => p.length === 0 && dist(players[i], spotOf.get(players[i])!) > 0)) {
+      return;
+    }
     for (const ch of players) {
       if (isPatron(ch)) {
         ch.isActive = false;
@@ -881,7 +915,9 @@ export class OfficeState {
       ch.sipping = false;
       ch.glassSlot = null;
     }
-    this.pickleball = startPickleball(players, court, paths);
+    this.pickleball = startPickleball(teams, court, paths);
+    // The two called over answer on their way
+    if (doubles) for (const ch of recruits) ch.speech = randomOf(PICKLEBALL.join);
   }
 
   /** Game over (or called off): both go back to resting (an agent with work
@@ -972,7 +1008,7 @@ export class OfficeState {
   }
 
   /** Sofa sitters drink no beer: they sit, and every so often take a free glass
-   *  off the tray, sip, and put it back. All glasses out — wait a moment. */
+   *  off the tray, sip, and put it back. All glasses out â€” wait a moment. */
   private updateSofaSitting(dt: number): void {
     let glassesMoved = false;
     const drawn = this.getDrawnCharacters();
@@ -1158,7 +1194,7 @@ export class OfficeState {
   }
 
   private updatePatron(p: Character, dt: number): void {
-    // An agent took this patron's seat — give it up
+    // An agent took this patron's seat â€” give it up
     if (p.seatId) {
       const seat = this.seats.get(p.seatId);
       if (!seat || seat.assigned) sendPatronToRest(p, PATRON_SEAT_RETRY_SEC);
@@ -1285,7 +1321,7 @@ export class OfficeState {
 
     const areaLabels = directoryName ? this.areaMappings[directoryName] : undefined;
 
-    // Stage 1 — in-area seats for the Directory's mapped Area labels.
+    // Stage 1 â€” in-area seats for the Directory's mapped Area labels.
     if (areaLabels && areaLabels.length > 0) {
       const wanted = new Set(areaLabels);
       const inArea = freeSeats.filter((uid) => {
@@ -1296,12 +1332,12 @@ export class OfficeState {
       if (pick) return pick;
     }
 
-    // Stage 2 — unzoned seats (no area label, or layout has no areas at all).
+    // Stage 2 â€” unzoned seats (no area label, or layout has no areas at all).
     const unzoned = freeSeats.filter((uid) => this.seatZone(uid) === null);
     const pick2 = this.pickFromSeats(unzoned, electronicsTiles);
     if (pick2) return pick2;
 
-    // Stage 3 — any free seat.
+    // Stage 3 â€” any free seat.
     return this.pickFromSeats(freeSeats, electronicsTiles);
   }
 
@@ -1327,7 +1363,7 @@ export class OfficeState {
   /**
    * Pick a diverse palette for a new agent based on currently active agents.
    * First 6 agents each get a unique skin (random order). Beyond 6, skins
-   * repeat in balanced rounds with a random hue shift (≥45°).
+   * repeat in balanced rounds with a random hue shift (â‰¥45Â°).
    */
   private pickDiversePalette(): { palette: number; hueShift: number } {
     // Count how many non-sub-agents use each base palette (0-5)
@@ -1393,7 +1429,7 @@ export class OfficeState {
       seat.assigned = true;
       ch = createCharacter(id, palette, seatId, seat, hueShift);
     } else {
-      // No seats — teammates spawn beside their anchor, others at a random walkable tile
+      // No seats â€” teammates spawn beside their anchor, others at a random walkable tile
       let spawn = anchorAt ? this.closestFreeWalkableTile(anchorAt.col, anchorAt.row) : null;
       if (!spawn) {
         spawn =
@@ -1417,10 +1453,10 @@ export class OfficeState {
     this.characters.set(id, ch);
   }
 
-  // ── Greeter ───────────────────────────────────────────────────
+  // â”€â”€ Greeter â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
   // The Intro is diegetic: a char_0 character stands near the office's
   // bottom-left corner and "speaks" the tour through a DOM bubble
-  // (IntroBubble). It is not an agent — see the `greeter` field.
+  // (IntroBubble). It is not an agent â€” see the `greeter` field.
 
   /** Spawn the greeter near the office's bottom-left corner: target tile
    *  GREETER_TILE_MARGIN in from the left and bottom edges, falling
@@ -1438,7 +1474,7 @@ export class OfficeState {
       GREETER_TILE_MARGIN,
       this.layout.rows - 1 - GREETER_TILE_MARGIN,
     );
-    if (!spawn) return; // no walkable tile — IntroBubble falls back to a fixed panel
+    if (!spawn) return; // no walkable tile â€” IntroBubble falls back to a fixed panel
     const ch = createCharacter(GREETER_ID, 0, null, null, 0);
     ch.isGreeter = true;
     ch.state = CharacterState.IDLE;
@@ -1454,7 +1490,7 @@ export class OfficeState {
 
   /** Start the greeter's despawn effect and release the greeter camera. The
    *  character is dropped once the effect finishes (see update()).
-   *  Idempotent — every close path (answer, Escape, hooksStatus) funnels here. */
+   *  Idempotent â€” every close path (answer, Escape, hooksStatus) funnels here. */
   despawnGreeter(): void {
     this.greeterCameraTarget = null;
     this.greeterCameraCancelled = false;
@@ -1480,7 +1516,7 @@ export class OfficeState {
     this.cancelGreeterCamera();
   }
 
-  /** Select an agent's character and have the camera follow it — what a card
+  /** Select an agent's character and have the camera follow it â€” what a card
    *  tap does to the office. No-op for an agent with no character. */
   selectAndFollow(id: number): void {
     if (!this.characters.has(id)) return;
@@ -1542,7 +1578,7 @@ export class OfficeState {
       ch.frame = 0;
       ch.frameTimer = 0;
     } else {
-      // Already at seat or no path — sit down
+      // Already at seat or no path â€” sit down
       ch.state = CharacterState.TYPE;
       ch.dir = seat.facingDir;
       ch.frame = 0;
@@ -1556,7 +1592,7 @@ export class OfficeState {
   /**
    * Move a just-linked teammate to the free seat closest to its lead, so teams
    * cluster. Only moves when that seat is strictly closer than the teammate's
-   * current one — a teammate created as a plain external agent (seated by an
+   * current one â€” a teammate created as a plain external agent (seated by an
    * arbitrary findFreeSeat) and tagged as a teammate only after tag discovery
    * would otherwise keep its arbitrary seat, unlike an inline teammate seated
    * next to the lead at creation.
@@ -1597,7 +1633,7 @@ export class OfficeState {
       ch.frame = 0;
       ch.frameTimer = 0;
     } else {
-      // Already at seat — sit down
+      // Already at seat â€” sit down
       ch.state = CharacterState.TYPE;
       ch.dir = seat.facingDir;
       ch.frame = 0;
@@ -1673,7 +1709,7 @@ export class OfficeState {
     const ch = this.characters.get(id);
     if (ch) {
       if (ch.matrixEffect === 'despawn') {
-        // Already despawning — just clean up maps
+        // Already despawning â€” just clean up maps
         this.subagentIdMap.delete(key);
         this.subagentMeta.delete(id);
         return;
@@ -1682,7 +1718,7 @@ export class OfficeState {
         const seat = this.seats.get(ch.seatId);
         if (seat) seat.assigned = false;
       }
-      // Start despawn animation — keep character in map for rendering
+      // Start despawn animation â€” keep character in map for rendering
       startMatrixEffect(ch, 'despawn');
       ch.bubbleType = null;
     }
@@ -1702,7 +1738,7 @@ export class OfficeState {
         const ch = this.characters.get(id);
         if (ch) {
           if (ch.matrixEffect === 'despawn') {
-            // Already despawning — just clean up maps
+            // Already despawning â€” just clean up maps
             this.subagentMeta.delete(id);
             toRemove.push(key);
             continue;
@@ -1856,7 +1892,7 @@ export class OfficeState {
     }
   }
 
-  /** Dismiss bubble on click — permission: instant, waiting: quick fade */
+  /** Dismiss bubble on click â€” permission: instant, waiting: quick fade */
   dismissBubble(id: number): void {
     const ch = this.characters.get(id);
     if (!ch || !ch.bubbleType) return;
@@ -1869,7 +1905,7 @@ export class OfficeState {
     }
   }
 
-  // ── Pets ──────────────────────────────────────────────────────
+  // â”€â”€ Pets â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 
   /**
    * Add a pet to the live runtime. Spawns at a uniformly-random walkable tile.
@@ -1893,7 +1929,7 @@ export class OfficeState {
       return;
     }
     if (this.pets.some((p) => p.id === placedPet.id)) return; // de-dupe
-    if (this.walkableTiles.length === 0) return; // no spawn space — silently drop
+    if (this.walkableTiles.length === 0) return; // no spawn space â€” silently drop
 
     const spawn = this.walkableTiles[Math.floor(Math.random() * this.walkableTiles.length)];
     const pet = createPet(placedPet.id, placedPet.petType, spawn.col, spawn.row);
@@ -1959,9 +1995,9 @@ export class OfficeState {
 
   /**
    * Reconcile `this.pets` to match the layout's placed-pet roster.
-   * - Pets in layout but not in runtime → spawn via addPet().
-   * - Pets in runtime but not in layout → remove.
-   * - Pets in both → keep existing runtime state (position, FSM).
+   * - Pets in layout but not in runtime â†’ spawn via addPet().
+   * - Pets in runtime but not in layout â†’ remove.
+   * - Pets in both â†’ keep existing runtime state (position, FSM).
    *
    * Called from constructor and rebuildFromLayout. Always runs AFTER walkableTiles
    * is populated.
@@ -1986,7 +2022,7 @@ export class OfficeState {
 
   /**
    * Re-export the current pet roster into `this.layout.pets`. Called only from
-   * mutating methods (addPet / removePet / rebuildPetsFromLayout) — NEVER from
+   * mutating methods (addPet / removePet / rebuildPetsFromLayout) â€” NEVER from
    * getLayout(), which runs on every render frame.
    */
   private syncLayoutPets(): void {
@@ -2111,7 +2147,7 @@ export class OfficeState {
     return null;
   }
 
-  /** Gather → workout once the line has formed (or the wait ran out) → done. */
+  /** Gather â†’ workout once the line has formed (or the wait ran out) â†’ done. */
   private tickExercise(dt: number): void {
     const ex = this.exercise;
     if (!ex) return;
@@ -2151,7 +2187,7 @@ export class OfficeState {
     }
 
     // The greeter materializes and dematerializes like anyone else, but runs
-    // no FSM — it stands where it spawned for as long as the ask is up.
+    // no FSM â€” it stands where it spawned for as long as the ask is up.
     if (this.greeter && advanceMatrixEffect(this.greeter, dt) === 'despawned') {
       this.greeter = null;
     }
@@ -2208,12 +2244,12 @@ export class OfficeState {
       this.characters.delete(id);
     }
 
-    // ── Bar patrons ────────────────────────────────────────────
+    // â”€â”€ Bar patrons â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
     this.ensurePatrons();
     const twins = this.agentPaletteKeys();
     for (const p of this.patrons) {
       if (twins.has(p.palette)) {
-        // Its agent twin is here — hold no seat or rest spot while hidden
+        // Its agent twin is here â€” hold no seat or rest spot while hidden
         if (p.seatId || p.isActive) sendPatronToRest(p, PATRON_SEAT_RETRY_SEC);
         p.restSpot = null;
         continue;
@@ -2230,7 +2266,7 @@ export class OfficeState {
     this.updateChat(dt);
     this.tickPickleball(dt);
 
-    // ── Pet FSM ────────────────────────────────────────────────
+    // â”€â”€ Pet FSM â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
     for (const pet of this.pets) {
       updatePet(pet, dt, this.walkableTiles, this.characters, this.tileMap, this.blockedTiles);
 
@@ -2247,7 +2283,7 @@ export class OfficeState {
 
   /** The `saveAgentSeats` payload: palette, hue and seat for every agent worth
    *  restoring. Sub-agents are excluded because they are derived state the
-   *  runtime re-materializes, and the greeter never reaches here at all —
+   *  runtime re-materializes, and the greeter never reaches here at all â€”
    *  it is not in `characters`. */
   getPersistableSeats(): Record<
     number,
@@ -2263,7 +2299,7 @@ export class OfficeState {
 
   /** Everything the renderer draws: the agents plus, while the first-run ask
    *  is up, the consent greeter. This is the ONE place the greeter joins the
-   *  agents — every other consumer reads `characters` and gets agents only. */
+   *  agents â€” every other consumer reads `characters` and gets agents only. */
   getCharacters(): Character[] {
     const chars = Array.from(this.characters.values());
     if (this.greeter) chars.push(this.greeter);
