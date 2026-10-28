@@ -11,7 +11,7 @@ import { test } from 'vitest';
 
 import { EXERCISE_WORKOUT_SEC } from '../src/constants.js';
 import { getCharacterSprite } from '../src/office/engine/characters.js';
-import { pickCourtRows, pickLineSlots } from '../src/office/engine/exercise.js';
+import { pickCourtColumns, pickLineSlots } from '../src/office/engine/exercise.js';
 import { OfficeState } from '../src/office/engine/officeState.js';
 import { getCharacterSprites } from '../src/office/sprites/spriteData.js';
 import { CharacterState } from '../src/office/types.js';
@@ -32,29 +32,36 @@ test('line slots sit one tile apart in a single row when the room is wide enough
   assert.deepEqual([cols[1] - cols[0], cols[2] - cols[1]], [2, 2], 'a free tile between people');
 });
 
-// A 10-wide room (cols 0-9) with an 8x4 court at col 1, rows 4-7
-const courtRoom = floor(10, 12);
+// A 10-wide room (cols 0-9, rows 0-13) with an 8x4 court at col 1, rows 4-7.
+// The net runs between cols 4 and 5.
+const courtRoom = floor(10, 14);
 const court = { col: 1, row: 4, w: 8, h: 4 };
 
-test('on the court: two staggered rows, each back spot in a gap of the front row', () => {
-  const slots = pickCourtRows(8, court, courtRoom);
+test('on the court: two staggered lines down the screen, clear of the net', () => {
+  const { slots, coach } = pickCourtColumns(8, court, courtRoom)!;
   assert.equal(slots.length, 8);
-  const front = slots.filter((s) => s.row === 6).map((s) => s.col);
-  const back = slots.filter((s) => s.row === 5).map((s) => s.col);
-  assert.equal(front.length + back.length, 8, 'two rows only');
-  assert.equal(slots[0].row, 6, 'front row first (the coach stands in front of it)');
-  for (let i = 1; i < front.length; i++) assert.equal(front[i] - front[i - 1], 2);
-  for (const col of back) assert.ok(front.includes(col - 1), 'behind a gap, not a person');
-  assert.ok(slots.every((s) => !s.shiftPx));
+  const cols = [...new Set(slots.map((s) => s.col))].sort((a, b) => a - b);
+  assert.deepEqual(cols, [3, 6], 'one line each side, the tile beside the net left free');
+  const left = slots.filter((s) => s.col === 3).map((s) => s.row);
+  const right = slots.filter((s) => s.col === 6).map((s) => s.row);
+  for (let i = 1; i < left.length; i++) assert.equal(left[i] - left[i - 1], 2, 'a tile apart');
+  for (const row of right)
+    assert.ok(left.includes(row - 1) || left.includes(row + 1), 'level with a gap');
+  assert.ok(slots.every((s) => !s.shiftX && !s.shiftY));
+  // The coach below both lines, under the net
+  assert.equal(coach.col, 4);
+  assert.ok(slots.every((s) => s.row <= coach.row - 2));
 });
 
-test('on the court, a crowd: shoulder to shoulder, back row half a tile over', () => {
-  const slots = pickCourtRows(18, court, courtRoom);
-  assert.equal(slots.length, 18);
-  const back = slots.filter((s) => s.row === 5);
-  assert.equal(slots.filter((s) => s.row === 6).length + back.length, 18, 'still two rows');
-  assert.ok(back.every((s) => s.shiftPx === 8));
-  assert.equal(new Set(slots.map((s) => `${s.col},${s.row}`)).size, 18);
+test('on the court, a crowd: one behind another, the right line half a tile lower', () => {
+  const { slots } = pickCourtColumns(20, court, courtRoom)!;
+  assert.equal(slots.length, 20);
+  assert.deepEqual(
+    [...new Set(slots.map((s) => s.col))].sort((a, b) => a - b),
+    [3, 6],
+  );
+  assert.ok(slots.filter((s) => s.col === 6).every((s) => s.shiftY === 8));
+  assert.equal(new Set(slots.map((s) => `${s.col},${s.row}`)).size, 20, 'no tile used twice');
 });
 
 test('a crowd too big for one row overflows into further rows, no tile used twice', () => {

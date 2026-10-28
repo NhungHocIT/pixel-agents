@@ -125,92 +125,97 @@ export function updateExerciser(ch: Character, dt: number): void {
   stepWalk(ch, dt, ch.exerciseFacing ?? Direction.DOWN);
 }
 
-/** A spot in the exercise rows; `shiftPx` nudges a packed back-row spot right
- *  by half a tile so it sits between the two in front. */
+/** A spot in the exercise line; `shiftX`/`shiftY` nudge a packed spot half a
+ *  tile so it sits in the gap beside the line next to it. */
 export interface ExerciseSlot {
   col: number;
   row: number;
-  shiftPx?: number;
+  shiftX?: number;
+  shiftY?: number;
 }
 
-/** Two staggered rows on the pickleball court, facing down toward the coach
- *  below it: the front row on the court's lower middle row, the back row just
- *  above, each back spot in the gap between two front ones. Rows span the
- *  walkable floor across the court's row (the court room), centred on the
- *  court. A tile apart when everyone fits that way; otherwise shoulder to
- *  shoulder with the back row half a tile over; anyone left over in a third
- *  row behind. Front row first in the result. */
-export function pickCourtRows(
+/** Two staggered lines down the screen on the pickleball court, one either
+ *  side of the net and a tile clear of it (nobody stands on the net), all
+ *  facing down toward the coach, who stands below them facing up. The right
+ *  line stands level with the gaps in the left one: a tile apart when everyone
+ *  fits that way, otherwise one behind another with the right line half a
+ *  tile lower. Each line runs the walkable floor in its column through the
+ *  court, minus the rows left free for the coach. Null without room. */
+export function pickCourtColumns(
   count: number,
   court: { col: number; row: number; w: number; h: number },
   walkableTiles: Array<{ col: number; row: number }>,
-): ExerciseSlot[] {
-  const centre = court.col + Math.floor(court.w / 2);
-  /** The run of walkable columns on `row` through the court's middle. */
-  const run = (row: number): [number, number] | null => {
-    const cols = new Set(walkableTiles.filter((t) => t.row === row).map((t) => t.col));
-    if (!cols.has(centre)) return null;
-    let lo = centre;
-    let hi = centre;
-    while (cols.has(lo - 1)) lo--;
-    while (cols.has(hi + 1)) hi++;
-    return [lo, hi];
+): { slots: ExerciseSlot[]; coach: { col: number; row: number } } | null {
+  const walkable = new Set(walkableTiles.map((t) => `${t.col},${t.row}`));
+  const open = (col: number, row: number) => walkable.has(`${col},${row}`);
+  const mid = court.row + Math.floor(court.h / 2);
+  /** The walkable run in `col` through the court's middle row. */
+  const run = (col: number): [number, number] | null => {
+    if (!open(col, mid)) return null;
+    let top = mid;
+    let bottom = mid;
+    while (open(col, top - 1)) top--;
+    while (open(col, bottom + 1)) bottom++;
+    return [top, bottom];
   };
-  /** Up to `n` columns `gap` apart in [lo, hi], centred on the court. */
-  const spread = ([lo, hi]: [number, number], n: number, gap: number) => {
-    const take = Math.min(n, Math.floor((hi - lo) / gap) + 1);
-    if (take <= 0) return [];
-    const width = (take - 1) * gap;
-    const first = Math.max(lo, Math.min(Math.round(centre - width / 2), hi - width));
-    return Array.from({ length: take }, (_, i) => first + i * gap);
+  // The net runs down the middle of the court, between tiles netLeft and
+  // netLeft + 1; each line keeps the tile beside the net free
+  const netLeft = court.col + Math.floor(court.w / 2) - 1;
+  const left = netLeft - 1;
+  const right = netLeft + 2;
+  const leftRun = run(left);
+  const rightRun = run(right);
+  if (!leftRun || !rightRun) return null;
+  // The coach stands two rows below the lines, under the net
+  const bottom = Math.min(leftRun[1], rightRun[1]);
+  const top = Math.max(leftRun[0], rightRun[0]);
+  const coachRow = bottom;
+  const last = coachRow - 2; // the lines' lowest row
+  if (last < top) return null;
+  const coach = { col: netLeft, row: coachRow };
+  const rows = (from: number, gap: number, n: number) => {
+    const out: number[] = [];
+    for (let r = last - from; r >= top && out.length < n; r -= gap) out.push(r);
+    return out.reverse();
   };
 
-  const frontRow = court.row + Math.floor(court.h / 2);
-  const backRow = frontRow - 1;
-  const front = run(frontRow);
-  const back = run(backRow);
-  if (!front || !back) return [];
-
-  // A tile apart, the back row one tile over in the gaps — if everyone fits
-  const shared: [number, number] = [Math.max(front[0], back[0]), Math.min(front[1], back[1]) - 1];
-  const frontCols = spread(shared, Math.ceil(count / 2), 2);
-  if (frontCols.length * 2 >= count) {
-    return [
-      ...frontCols.map((col) => ({ col, row: frontRow })),
-      ...frontCols
-        .slice(0, count - frontCols.length)
-        .map((col) => ({ col: col + 1, row: backRow })),
-    ];
+  // A tile apart, the right line in the left one's gaps — if everyone fits
+  const leftRows = rows(0, 2, Math.ceil(count / 2));
+  const rightRows = rows(1, 2, count - leftRows.length);
+  if (leftRows.length + rightRows.length >= count) {
+    return {
+      slots: [
+        ...leftRows.map((row) => ({ col: left, row })),
+        ...rightRows.map((row) => ({ col: right, row })),
+      ],
+      coach,
+    };
   }
 
-  // Shoulder to shoulder, the back row half a tile over; the rest behind
-  const slots: ExerciseSlot[] = spread(front, Math.ceil(count / 2), 1).map((col) => ({
-    col,
-    row: frontRow,
-  }));
-  const backSpan: [number, number] = [back[0], back[1] - 1]; // the half-tile shift needs room
-  for (const col of spread(backSpan, count - slots.length, 1)) {
-    slots.push({ col, row: backRow, shiftPx: TILE_SIZE / 2 });
-  }
-  const extra = run(backRow - 1);
-  if (extra && slots.length < count) {
-    for (const col of spread(extra, count - slots.length, 1)) slots.push({ col, row: backRow - 1 });
-  }
-  return slots;
+  // One behind another, the right line half a tile lower
+  const packedLeft = rows(0, 1, Math.ceil(count / 2));
+  const packedRight = rows(0, 1, count - packedLeft.length);
+  return {
+    slots: [
+      ...packedLeft.map((row) => ({ col: left, row })),
+      ...packedRight.map((row) => ({ col: right, row, shiftY: TILE_SIZE / 2 })),
+    ],
+    coach,
+  };
 }
 
 /** Head for the line along `path` (empty: already there or unreachable —
- *  exercise on the spot), to face `facing` once there, standing `shiftPx`
- *  right of the tile centre while working out. */
+ *  exercise on the spot), to face `facing` once there, standing `shift` px off
+ *  the tile centre while working out. */
 export function joinExercise(
   ch: Character,
   path: Array<{ col: number; row: number }>,
   facing: Direction = Direction.DOWN,
-  shiftPx = 0,
+  shift: { x?: number; y?: number } = {},
 ): void {
   startWalk(ch, path, facing);
   ch.exerciseFacing = facing;
-  ch.exerciseShiftPx = shiftPx;
+  ch.exerciseShift = { x: shift.x ?? 0, y: shift.y ?? 0 };
   ch.lostDetours = 0;
   ch.exerciseTimer = 0;
 }
@@ -218,7 +223,8 @@ export function joinExercise(
 /** The line has formed (or the wait ran out): everyone starts where they stand. */
 export function beginWorkout(ch: Character): void {
   snapToTile(ch);
-  ch.x += ch.exerciseShiftPx ?? 0;
+  ch.x += ch.exerciseShift?.x ?? 0;
+  ch.y += ch.exerciseShift?.y ?? 0;
   ch.path = [];
   ch.state = CharacterState.EXERCISE;
   ch.dir = ch.exerciseFacing ?? Direction.DOWN;
@@ -236,7 +242,7 @@ export function endWorkout(ch: Character): void {
   ch.frameTimer = 0;
   ch.exerciseTimer = undefined;
   ch.exerciseFacing = undefined;
-  ch.exerciseShiftPx = undefined;
+  ch.exerciseShift = undefined;
   ch.seatTimer = 0;
   ch.wanderTimer = Math.random() * WANDER_PAUSE_MIN_SEC;
 }

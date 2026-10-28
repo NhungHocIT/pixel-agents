@@ -245,8 +245,8 @@ export interface Character {
   exerciseFacing?: Direction;
   /** Has said bye to the table and is about to get up (cleared once up). */
   saidBye?: boolean;
-  /** Exercise break: px right of the tile centre (a packed back row stands in the gaps). */
-  exerciseShiftPx?: number;
+  /** Exercise break: px off the tile centre (a packed line stands in the gaps of the next). */
+  exerciseShift?: { x: number; y: number };
   /** Storyline: wrong turns still to take before heading to the real destination. */
   lostDetours?: number;
   /** Storyline: idle wandering stays near this tile (a follower's leader). */
