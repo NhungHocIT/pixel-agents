@@ -23,8 +23,14 @@ import {
 } from '../../constants.js';
 import type { Character } from '../types.js';
 import { CharacterState } from '../types.js';
-import type { ChatPlace } from './dialogues.js';
-import { pickDialogue } from './dialogues.js';
+import type { ChatPlace, InviteTo } from './dialogues.js';
+import { inviteDialogue, pickDialogue } from './dialogues.js';
+
+/** `speakers[0]` asks `speakers[1]` along; on a yes both go when the chat ends. */
+export interface ChatInvite {
+  to: InviteTo;
+  accepted: boolean;
+}
 
 export interface BarChat {
   speakers: [Character, Character];
@@ -34,6 +40,7 @@ export interface BarChat {
   timer: number;
   /** Where it started: 'street' chats hold both speakers where they met. */
   place: ChatPlace;
+  invite?: ChatInvite;
 }
 
 function lineSec(text: string): number {
@@ -60,7 +67,9 @@ function tilesApart(a: Character, b: Character): number {
  *  pair up talkers close together (nearest first). Two people where one is
  *  walking only pair when they are right next to each other — that's a
  *  'street' chat. `canPair` limits who may start a chat with whom; `placeOf`
- *  says where a new pair is. Returns the chats still running. */
+ *  says where a new pair is. `inviteOf` may turn a new pair's chat into an
+ *  invite (`a` asks `b`); `onAccepted` runs when an accepted invite has been
+ *  said in full. Returns the chats still running. */
 export function updateChats(
   chats: BarChat[],
   talkers: Character[],
@@ -68,6 +77,8 @@ export function updateChats(
   dt: number,
   canPair: (a: Character, b: Character) => boolean = () => true,
   placeOf: (a: Character, b: Character) => ChatPlace = () => 'bar',
+  inviteOf: (a: Character, b: Character) => ChatInvite | null = () => null,
+  onAccepted: (chat: BarChat) => void = () => {},
 ): BarChat[] {
   const present = new Set(talkers);
   const running: BarChat[] = [];
@@ -81,6 +92,7 @@ export function updateChats(
     if (chat.timer <= 0) {
       chat.index++;
       if (chat.index >= chat.lines.length) {
+        if (chat.invite?.accepted) onAccepted(chat);
         endChat(chat);
         continue;
       }
@@ -111,6 +123,13 @@ export function updateChats(
     if (tilesApart(b, a) > range) continue;
     free.splice(free.indexOf(b), 1);
     const place = onTheWay ? 'street' : placeOf(a, b);
+    const invite = inviteOf(a, b);
+    if (invite) {
+      const chat = startChat([a, b], inviteDialogue(invite.to, invite.accepted), place);
+      chat.invite = invite;
+      running.push(chat);
+      continue;
+    }
     const nameA = nameOf(a);
     const { lines, opener } = pickDialogue(nameA, nameOf(b), place, USER_AVATAR_NAME);
     // A script that names who opens it: make that character the first speaker

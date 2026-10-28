@@ -7,6 +7,8 @@ import {
   CHARACTER_HIT_HALF_WIDTH,
   CHARACTER_HIT_HEIGHT,
   CHARACTER_NAMES,
+  CHAT_INVITE_ACCEPT_CHANCE,
+  CHAT_INVITE_CHANCE,
   DISMISS_BUBBLE_FAST_FADE_SEC,
   EXERCISE_GATHER_MAX_SEC,
   EXERCISE_INTERVAL_MS,
@@ -23,6 +25,8 @@ import {
   MAX_PET_ID_LENGTH,
   OWNER_VISIT_MAX_SEC,
   OWNER_VISIT_MIN_SEC,
+  PATRON_DRINK_MAX_SEC,
+  PATRON_DRINK_MIN_SEC,
   PATRON_SEAT_RETRY_SEC,
   PET_HIT_HALF_WIDTH,
   PET_HIT_HEIGHT,
@@ -77,13 +81,13 @@ import type {
   TileType as TileTypeVal,
 } from '../types.js';
 import { CharacterState, Direction, PetState, TILE_SIZE } from '../types.js';
-import type { BarChat } from './barChat.js';
+import type { BarChat, ChatInvite } from './barChat.js';
 import { startChat, updateChats } from './barChat.js';
 import { createPatron, isPatron, sendPatronToRest, tickPatronSchedule } from './barPatrons.js';
 import { characterNameOf, storyAnchorName, storySyncName, storyTiesOf } from './barStory.js';
 import { characterDrawOffsetPx, createCharacter, updateCharacter } from './characters.js';
-import type { ChatPlace } from './dialogues.js';
-import { waiterDialogue } from './dialogues.js';
+import type { ChatPlace, InviteTo } from './dialogues.js';
+import { randomOf, waiterDialogue } from './dialogues.js';
 import type { ExerciseSession } from './exercise.js';
 import {
   beginWorkout,
@@ -688,8 +692,7 @@ export class OfficeState {
   /** A free bar seat for a patron: not an agent's, not another patron's.
    *  Storyline ties pick the free seat nearest the partner / buddy / leader. */
   private pickPatronSeat(p: Character): string | null {
-    const used = new Set(this.patrons.filter((o) => o !== p && o.seatId).map((o) => o.seatId));
-    const free = [...this.seats.values()].filter((s) => !s.assigned && !used.has(s.uid));
+    const free = this.freePatronSeats([p]);
     if (free.length === 0) return null;
     const anchorSeatId = this.storyAnchor(p)?.seatId;
     const anchorSeat = anchorSeatId ? this.seats.get(anchorSeatId) : undefined;
@@ -700,8 +703,109 @@ export class OfficeState {
     }
     // Often head for the lounge sofa, where patrons chat
     const sofa = free.filter((s) => this.isSofaSeat(s.uid));
-    const pool = sofa.length > 0 && Math.random() < SOFA_SEAT_PREFERENCE ? sofa : free;
-    return pool[Math.floor(Math.random() * pool.length)].uid;
+    if (sofa.length > 0 && Math.random() < SOFA_SEAT_PREFERENCE) return randomOf(sofa).uid;
+    // Beer takes two at a table: join a table someone is already drinking at
+    const busyTables = new Set(this.getDrawnCharacters().map((o) => this.seatedAt(o)?.tableId));
+    const joinable = free.filter((s) => s.tableId && busyTables.has(s.tableId));
+    return randomOf(joinable.length > 0 ? joinable : free).uid;
+  }
+
+  /** Seats no agent holds and no patron but `except` has taken. */
+  private freePatronSeats(except: Character[]): Seat[] {
+    const used = new Set(
+      this.patrons.filter((o) => !except.includes(o) && o.seatId).map((o) => o.seatId),
+    );
+    return [...this.seats.values()].filter((s) => !s.assigned && !used.has(s.uid));
+  }
+
+  /** The seat `ch` is sitting in right now (not just walking to). */
+  private seatedAt(ch: Character): Seat | undefined {
+    const seat = ch.seatId ? this.seats.get(ch.seatId) : undefined;
+    const sitting =
+      ch.state === CharacterState.TYPE &&
+      seat !== undefined &&
+      ch.tileCol === seat.seatCol &&
+      ch.tileRow === seat.seatRow;
+    return sitting ? seat : undefined;
+  }
+
+  /** Everyone else sitting at the same table as `ch`. */
+  private tablemates(ch: Character): Character[] {
+    const tableId = this.seatedAt(ch)?.tableId;
+    if (!tableId) return [];
+    return this.getDrawnCharacters().filter(
+      (o) => o !== ch && this.seatedAt(o)?.tableId === tableId,
+    );
+  }
+
+  /** Two free seats for a pair going together: side by side on the sofa, or at
+   *  one bar table. The one nearest `a` first, then the free one nearest that. */
+  private seatsTogether(a: Character, b: Character, to: InviteTo): [Seat, Seat] | null {
+    const fits = (s: Seat) => (to === 'sofa' ? this.isSofaSeat(s.uid) : !this.isSofaSeat(s.uid));
+    const free = this.freePatronSeats([a, b]).filter(fits);
+    const groups = new Map<string, Seat[]>();
+    for (const s of free) {
+      const key = to === 'sofa' ? 'sofa' : s.tableId;
+      if (!key) continue; // a lone chair: no one to drink with
+      groups.set(key, [...(groups.get(key) ?? []), s]);
+    }
+    const from = (col: number, row: number) => (s: Seat) =>
+      Math.abs(s.seatCol - col) + Math.abs(s.seatRow - row);
+    const nearest = (seats: Seat[], dist: (s: Seat) => number) =>
+      seats.reduce((m, s) => (dist(s) < dist(m) ? s : m));
+    const toA = from(a.tileCol, a.tileRow);
+    let best: [Seat, Seat] | null = null;
+    for (const seats of groups.values()) {
+      if (seats.length < 2) continue;
+      const first = nearest(seats, toA);
+      const second = nearest(
+        seats.filter((s) => s !== first),
+        from(first.seatCol, first.seatRow),
+      );
+      if (!best || toA(first) < toA(best[0])) best = [first, second];
+    }
+    return best;
+  }
+
+  /** Patrons who can be asked along: not the waiter (working), not TNhunn
+   *  (follows the user's real activity). */
+  private canBeInvited(ch: Character): boolean {
+    return isPatron(ch) && !this.isWaiter(ch) && !this.isUserAvatar(ch);
+  }
+
+  /** Now and then a new chat between two patrons is `a` asking `b` along: for a
+   *  beer (a table with two free seats, unless they already drink together) or
+   *  to the sofa (unless one is on it). Null: just a chat. */
+  private inviteOf(a: Character, b: Character): ChatInvite | null {
+    if (!this.canBeInvited(a) || !this.canBeInvited(b)) return null;
+    if (Math.random() >= CHAT_INVITE_CHANCE) return null;
+    const options: InviteTo[] = [];
+    if (!this.tablemates(a).includes(b) && this.seatsTogether(a, b, 'beer')) options.push('beer');
+    if (!a.onSofa && !b.onSofa && this.seatsTogether(a, b, 'sofa')) options.push('sofa');
+    if (options.length === 0) return null;
+    return { to: randomOf(options), accepted: Math.random() < CHAT_INVITE_ACCEPT_CHANCE };
+  }
+
+  /** A yes: both get up from whatever they were doing and head there now, together. */
+  private goTogether(chat: BarChat): void {
+    const [a, b] = chat.speakers;
+    const seats = this.seatsTogether(a, b, chat.invite!.to);
+    if (!seats) return; // taken while they talked
+    const stay = randomBetween(PATRON_DRINK_MIN_SEC, PATRON_DRINK_MAX_SEC);
+    for (const [i, ch] of [a, b].entries()) {
+      ch.seatId = seats[i].uid;
+      ch.isActive = true; // the FSM wakes it / stops the game and walks it there
+      ch.patronTimer = stay; // and they leave together too
+      ch.restSpot = null;
+      ch.lostDetours = 0; // straight there, no wrong turns
+      ch.seatTimer = 0;
+      if (ch.state === CharacterState.TYPE) {
+        // Sitting elsewhere already: stand up so IDLE walks to the new seat
+        ch.state = CharacterState.IDLE;
+        ch.frame = 0;
+        ch.frameTimer = 0;
+      }
+    }
   }
 
   /** Seat uids are the chair uid, or `uid:N` for the extra seats of a multi-seat piece. */
@@ -769,7 +873,10 @@ export class OfficeState {
     let glassesMoved = false;
     const drawn = this.getDrawnCharacters();
     for (const ch of drawn) {
-      ch.noBeer = !this.beerFloors.has(this.tileMap[ch.tileRow]?.[ch.tileCol]);
+      // Beer only in the bar, and never alone: two or more at one table
+      ch.noBeer =
+        !this.beerFloors.has(this.tileMap[ch.tileRow]?.[ch.tileCol]) ||
+        this.tablemates(ch).length === 0;
       const seat = ch.seatId ? this.seats.get(ch.seatId) : undefined;
       const seated =
         ch.state === CharacterState.TYPE &&
@@ -831,6 +938,8 @@ export class OfficeState {
       dt,
       (a, b) => !this.isWaiter(a) && !this.isWaiter(b),
       (a, b) => this.chatPlace(a, b),
+      (a, b) => this.inviteOf(a, b),
+      (chat) => this.goTogether(chat),
     );
     const talking = new Set(talkers);
     for (const ch of [...this.characters.values(), ...this.patrons]) {

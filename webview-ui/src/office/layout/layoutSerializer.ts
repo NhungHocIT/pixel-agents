@@ -181,6 +181,24 @@ export function layoutToSeats(furniture: PlacedFurniture[]): Map<string, Seat> {
     }
   }
 
+  // One table = desk tiles that touch, so a long table built from several
+  // desk pieces is one table. Named after its first tile.
+  const tableOf = new Map<string, string>();
+  for (const start of deskTiles) {
+    if (tableOf.has(start)) continue;
+    const stack = [start];
+    tableOf.set(start, start);
+    while (stack.length > 0) {
+      const [c, r] = stack.pop()!.split(',').map(Number);
+      for (const next of [`${c + 1},${r}`, `${c - 1},${r}`, `${c},${r + 1}`, `${c},${r - 1}`]) {
+        if (deskTiles.has(next) && !tableOf.has(next)) {
+          tableOf.set(next, start);
+          stack.push(next);
+        }
+      }
+    }
+  }
+
   const dirs: Array<{ dc: number; dr: number; facing: Direction }> = [
     { dc: 0, dr: -1, facing: Direction.UP }, // desk is above chair → face UP
     { dc: 0, dr: 1, facing: Direction.DOWN }, // desk is below chair → face DOWN
@@ -217,6 +235,12 @@ export function layoutToSeats(furniture: PlacedFurniture[]): Map<string, Seat> {
           }
         }
 
+        // The table it faces, else any table it touches
+        const facingTile = dirs.find((d) => d.facing === facingDir)!;
+        const tableId =
+          tableOf.get(`${tileCol + facingTile.dc},${tileRow + facingTile.dr}`) ??
+          dirs.map((d) => tableOf.get(`${tileCol + d.dc},${tileRow + d.dr}`)).find(Boolean);
+
         // First seat uses chair uid (backward compat), subsequent use uid:N
         const seatUid = seatCount === 0 ? item.uid : `${item.uid}:${seatCount}`;
         seats.set(seatUid, {
@@ -225,6 +249,7 @@ export function layoutToSeats(furniture: PlacedFurniture[]): Map<string, Seat> {
           seatRow: tileRow,
           facingDir,
           assigned: false,
+          ...(tableId ? { tableId } : {}),
         });
         seatCount++;
       }

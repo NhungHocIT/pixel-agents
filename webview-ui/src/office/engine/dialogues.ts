@@ -6,6 +6,7 @@
  *   GAME     — in the game room / at a gaming PC
  *   SOFA     — on the lounge sofa
  *   STREET   — two people bumping into each other on the way somewhere
+ *   INVITE   — one asks the other along for a beer or to the sofa; a yes sends both
  *   EXERCISE — the exercise break (coach calls and the line's replies)
  *   OWNER    — TNhunn (USER_AVATAR_NAME), who owns the agents, dropping by; TNhunn opens
  *   PAIR     — storyline pairs, by name (pair[0] opens)
@@ -94,7 +95,6 @@ const STREET: readonly Script[] = [
   ['Ơ, đường này đi đâu vậy?', 'Đi lạc nữa rồi hả 😂'],
   ['Hey, high five! ✋', 'Bốp! ✋'],
   ['Ăn trưa chưa?', 'Chưa, đi chung không?', 'Ok, đợi tui chút!'],
-  ['Ê, tối nay đi bia không?', 'Đi chứ! 🍺'],
   ['Ui, suýt đụng nhau 😅', 'Xin lỗi nha, tui không để ý'],
 ];
 
@@ -302,6 +302,39 @@ const WAITER_SOFA: readonly Script[] = [
   ['Mình gọi thêm gì không ạ?', 'Cho 1 ấm trà nóng ☕', 'Dạ, có ngay ạ'],
   ['Dạ, mình gọi em ạ?', 'Thêm nước vào ly giúp mình 💧', 'Dạ, em rót liền'],
 ];
+
+// ── Rủ đi ────────────────────────────────────────────────────
+/** Where an invite goes: a beer at a bar table (two at one table), or the sofa. */
+export type InviteTo = 'beer' | 'sofa';
+
+/** Invites: the first speaker asks, the other answers. On a yes both go there together. */
+const INVITE_YES: Record<InviteTo, readonly Script[]> = {
+  beer: [
+    ['Ê, đi làm ly bia không? 🍺', 'Đi luôn!'],
+    ['Khát quá, ra bàn làm vài ly đi', 'Ok, đi chung!'],
+    ['Đi nhậu không? Tui bao 🍻', 'Bao thì đi liền!'],
+    ['Ngồi một mình uống buồn lắm, đi chung không?', 'Đi chứ, chờ gì nữa 🍺'],
+  ],
+  sofa: [
+    ['Ra sofa ngồi nghỉ chút không?', 'Ok, đi!'],
+    ['Mỏi chân quá, ra sofa ngồi đi', 'Chuẩn, đi thôi 🛋️'],
+    ['Ra sofa ăn trái cây không? 🍎', 'Đi, đi!'],
+  ],
+};
+const INVITE_NO: Record<InviteTo, readonly Script[]> = {
+  beer: [
+    ['Đi uống bia không? 🍺', 'Thôi, nay tui bận rồi 😅'],
+    ['Làm vài ly không?', 'Hôm qua say quá, nay nghỉ 🙈'],
+  ],
+  sofa: [
+    ['Ra sofa ngồi không?', 'Thôi, tui đứng đây được rồi'],
+    ['Ra sofa nghỉ chút không?', 'Để lát nữa nha'],
+  ],
+};
+
+export function inviteDialogue(to: InviteTo, accepted: boolean): Script {
+  return randomOf((accepted ? INVITE_YES : INVITE_NO)[to]);
+}
 
 export function randomOf<T>(list: readonly T[]): T {
   return list[Math.floor(Math.random() * list.length)];

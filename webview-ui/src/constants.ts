@@ -157,6 +157,10 @@ export const CHAT_COOLDOWN_MAX_SEC = 10;
 export const CHAT_STREET_RANGE_TILES = 1;
 export const CHAT_STREET_COOLDOWN_MIN_SEC = 30;
 export const CHAT_STREET_COOLDOWN_MAX_SEC = 60;
+/** Chance two patrons who start a chat make it an invite (a beer at a table, or
+ *  the sofa) — and that the other says yes, at which both head there together. */
+export const CHAT_INVITE_CHANCE = 0.35;
+export const CHAT_INVITE_ACCEPT_CHANCE = 0.7;
 export const SPEECH_TEXT_COLOR = '#1E1E28';
 export const SPEECH_BG_COLOR = '#FFFFFF';
 export const SPEECH_FONT_PX = 16;

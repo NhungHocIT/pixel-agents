@@ -68,6 +68,8 @@ export interface Seat {
   /** Direction character faces when sitting (toward adjacent desk) */
   facingDir: Direction;
   assigned: boolean;
+  /** The table (touching desk pieces) this seat is pulled up to; none for a lone chair. */
+  tableId?: string;
 }
 
 export interface FurnitureInstance {
