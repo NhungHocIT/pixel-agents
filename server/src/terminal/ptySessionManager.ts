@@ -24,6 +24,7 @@ import {
   TERMINAL_SHUTDOWN_SLACK_MS,
   TERMINAL_TERM_NAME,
 } from '../constants.js';
+import { normalizeConptyOutput } from './conptyOutput.js';
 import type { IPty, PtyModule } from './ptyModule.js';
 import { resolvePtyModule } from './ptyModule.js';
 
@@ -84,7 +85,9 @@ export class PtySession {
       this.serializeAddon as unknown as Parameters<HeadlessTerminal['loadAddon']>[0],
     );
 
-    this.pty.onData((chunk) => {
+    this.pty.onData((raw) => {
+      // ConPTY passes SO/SI through as printed cells; see conptyOutput.ts
+      const chunk = process.platform === 'win32' ? normalizeConptyOutput(raw) : raw;
       this.mirror.write(chunk);
       for (const listener of this.dataListeners) listener(chunk);
     });
