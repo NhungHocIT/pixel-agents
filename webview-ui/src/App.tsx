@@ -11,6 +11,7 @@ import { DirectoryModal } from './components/DirectoryModal.js';
 import { EditActionBar } from './components/EditActionBar.js';
 import { IntroBubble } from './components/IntroBubble.js';
 import { MigrationNotice } from './components/MigrationNotice.js';
+import { MusicVolume } from './components/MusicVolume.js';
 import { SettingsModal } from './components/SettingsModal.js';
 import type { TerminalView } from './components/TerminalDrawer.js';
 import { TerminalDrawer } from './components/TerminalDrawer.js';
@@ -677,6 +678,9 @@ function App() {
           View only
         </div>
       )}
+
+      {/* Background music volume, while music plays */}
+      {!isMobile && <MusicVolume />}
 
       {/* A read-only office gets no toolbar: launching, layout editing and every
           setting would be refused by the server anyway. */}

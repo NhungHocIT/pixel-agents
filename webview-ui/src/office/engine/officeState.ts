@@ -1,4 +1,5 @@
 import { pickDiversePalette } from '../../../../core/src/paletteUtils.js';
+import type { MusicScene } from '../../constants.js';
 import {
   AUTO_ON_FACING_DEPTH,
   AUTO_ON_SIDE_DEPTH,
@@ -2342,9 +2343,14 @@ export class OfficeState {
     return chars;
   }
 
-  /** A pickleball game is on (players heading to the court count): the music plays. */
-  isPickleballOn(): boolean {
-    return this.pickleball !== null;
+  /** Which background music fits now: League while TNhunn is at a PC playing
+   *  LoL, else the pickleball song while a game is on (players heading to the
+   *  court count), else none. */
+  musicScene(): MusicScene | null {
+    const owner = this.getVisiblePatrons().find((p) => this.isUserAvatar(p));
+    if (owner?.state === CharacterState.GAME && this.userInLeague()) return 'lol';
+    if (this.pickleball) return 'pickleball';
+    return null;
   }
 
   /** What the canvas draws: `getCharacters()` plus the bar patrons. Kept apart
