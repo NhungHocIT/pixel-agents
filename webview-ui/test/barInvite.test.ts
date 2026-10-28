@@ -77,12 +77,13 @@ function runInvite(accepted: boolean): BarChat[] {
   );
   assert.equal(chats.length, 1);
   assert.equal(chats[0].speakers[0], a, 'the one asking speaks first');
-  for (let i = 0; i < 10 && chats.length > 0; i++) {
+  // Small steps: a big one could also run out the after-chat cooldown and start a second invite
+  for (let i = 0; i < 60 && chats.length > 0; i++) {
     chats = updateChats(
       chats,
       [a, b],
       () => null,
-      6,
+      1,
       undefined,
       undefined,
       invite,
@@ -136,20 +137,12 @@ function settle(office: OfficeState): void {
   for (let i = 0; i < 400; i++) office.update(0.05);
 }
 
-test('no beer alone at a table; a second person at it and both drink', () => {
+test('an agent drinks at its desk even alone (the two-at-a-table rule is for patrons)', () => {
   const office = new OfficeState(layout());
   office.addAgent(1, undefined, undefined, 'c1', true);
   office.setAgentActive(1, true);
   settle(office);
-  const first = office.characters.get(1)!;
-  assert.equal(first.state, CharacterState.TYPE);
-  assert.equal(first.noBeer, true, 'alone: no beer');
-
-  office.addAgent(2, undefined, undefined, 'c2', true);
-  office.setAgentActive(2, true);
-  settle(office);
-  const second = office.characters.get(2)!;
-  assert.equal(second.state, CharacterState.TYPE);
-  assert.equal(first.noBeer, false);
-  assert.equal(second.noBeer, false);
+  const agent = office.characters.get(1)!;
+  assert.equal(agent.state, CharacterState.TYPE);
+  assert.equal(agent.noBeer, false);
 });

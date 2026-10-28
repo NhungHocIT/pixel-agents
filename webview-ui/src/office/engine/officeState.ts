@@ -873,10 +873,11 @@ export class OfficeState {
     let glassesMoved = false;
     const drawn = this.getDrawnCharacters();
     for (const ch of drawn) {
-      // Beer only in the bar, and never alone: two or more at one table
+      // Beer only in the bar. Patrons never drink alone (two or more at one
+      // table); agents drink at their desk as always.
       ch.noBeer =
         !this.beerFloors.has(this.tileMap[ch.tileRow]?.[ch.tileCol]) ||
-        this.tablemates(ch).length === 0;
+        (isPatron(ch) && this.tablemates(ch).length === 0);
       const seat = ch.seatId ? this.seats.get(ch.seatId) : undefined;
       const seated =
         ch.state === CharacterState.TYPE &&
