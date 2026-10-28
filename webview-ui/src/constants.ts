@@ -159,8 +159,23 @@ export const CHAT_STREET_COOLDOWN_MIN_SEC = 30;
 export const CHAT_STREET_COOLDOWN_MAX_SEC = 60;
 /** Chance two patrons who start a chat make it an invite (a beer at a table, or
  *  the sofa) — and that the other says yes, at which both head there together. */
-export const CHAT_INVITE_CHANCE = 0.35;
-export const CHAT_INVITE_ACCEPT_CHANCE = 0.7;
+export const CHAT_INVITE_CHANCE = 0.6;
+export const CHAT_INVITE_ACCEPT_CHANCE = 0.8;
+/** The pickleball court (a walk-on furniture piece); two who agree to play rally on it. */
+export const PICKLEBALL_COURT_FURNITURE_TYPE = 'PICKLEBALL_COURT';
+/** How long a game lasts once both are on court, and the longest wait for them to get there. */
+export const PICKLEBALL_GAME_SEC = 60;
+export const PICKLEBALL_GATHER_MAX_SEC = 30;
+/** Seconds the ball takes to cross the net, and how high it arcs (px). */
+export const PICKLEBALL_SHOT_SEC = 1.2;
+export const PICKLEBALL_ARC_PX = 14;
+/** Height (px) above the ground the ball is struck at. */
+export const PICKLEBALL_HIT_HEIGHT_PX = 10;
+/** Seconds between the players' calls during a game. */
+export const PICKLEBALL_CHAT_SEC = 4;
+export const PICKLEBALL_BALL_COLOR = '#DDF23A';
+export const PICKLEBALL_BALL_RIM_COLOR = '#9DB020';
+export const PICKLEBALL_SHADOW_COLOR = '#00000055';
 export const SPEECH_TEXT_COLOR = '#1E1E28';
 export const SPEECH_BG_COLOR = '#FFFFFF';
 export const SPEECH_FONT_PX = 16;

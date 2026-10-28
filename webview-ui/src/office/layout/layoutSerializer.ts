@@ -64,6 +64,10 @@ export function layoutToFurnitureInstances(furniture: PlacedFurniture[]): Furnit
       }
     }
 
+    // Walk-on pieces (every row is background, e.g. a sports court) lie on
+    // the floor: under everyone standing on them
+    if ((entry.backgroundTiles ?? 0) >= entry.footprintH) zY = y;
+
     // Surface items render in front of the desk they sit on
     if (entry.canPlaceOnSurfaces) {
       for (let dr = 0; dr < entry.footprintH; dr++) {

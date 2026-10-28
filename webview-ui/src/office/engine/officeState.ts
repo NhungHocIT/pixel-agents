@@ -30,6 +30,7 @@ import {
   PATRON_SEAT_RETRY_SEC,
   PET_HIT_HALF_WIDTH,
   PET_HIT_HEIGHT,
+  PICKLEBALL_COURT_FURNITURE_TYPE,
   SOFA_FURNITURE_PREFIX,
   SOFA_GLASS_RETRY_SEC,
   SOFA_SEAT_PREFERENCE,
@@ -101,6 +102,14 @@ import type { LolStatus } from './lolStatus.js';
 import { lolTitle } from './lolStatus.js';
 import { advanceMatrixEffect, startMatrixEffect } from './matrixEffectState.js';
 import { createPet, updatePet } from './petEntity.js';
+import type { PickleballCourt, PickleballGame } from './pickleball.js';
+import {
+  ballInstances,
+  courtSides,
+  endPickleball,
+  startPickleball,
+  updatePickleball,
+} from './pickleball.js';
 import { anchorTile, closestFreeSeat } from './seatPlacement.js';
 import type { WaiterRound } from './waiter.js';
 import { isServable, newWaiterRound, serveSpots } from './waiter.js';
@@ -189,6 +198,9 @@ export class OfficeState {
   /** The exercise break in progress, and when (wall clock) the next one starts. */
   private exercise: ExerciseSession | null = null;
   private nextExerciseAt = Date.now() + EXERCISE_INTERVAL_MS;
+  /** The pickleball game on the court (one at a time), and the ball drawn for it. */
+  private pickleball: PickleballGame | null = null;
+  private ball: FurnitureInstance[] = [];
   /** TNhunn dropping by: whose desk they are hanging around, and for how long. */
   private ownerVisitId: number | null = null;
   private ownerVisitTimer = 0;
@@ -774,14 +786,16 @@ export class OfficeState {
   }
 
   /** Now and then a new chat between two patrons is `a` asking `b` along: for a
-   *  beer (a table with two free seats, unless they already drink together) or
-   *  to the sofa (unless one is on it). Null: just a chat. */
+   *  beer (a table with two free seats, unless they already drink together),
+   *  to the sofa (unless one is on it), or to play pickleball (the court is
+   *  free). Null: just a chat. */
   private inviteOf(a: Character, b: Character): ChatInvite | null {
     if (!this.canBeInvited(a) || !this.canBeInvited(b)) return null;
     if (Math.random() >= CHAT_INVITE_CHANCE) return null;
     const options: InviteTo[] = [];
     if (!this.tablemates(a).includes(b) && this.seatsTogether(a, b, 'beer')) options.push('beer');
     if (!a.onSofa && !b.onSofa && this.seatsTogether(a, b, 'sofa')) options.push('sofa');
+    if (this.court() && !this.pickleball) options.push('pickleball');
     if (options.length === 0) return null;
     return { to: randomOf(options), accepted: Math.random() < CHAT_INVITE_ACCEPT_CHANCE };
   }
@@ -789,6 +803,10 @@ export class OfficeState {
   /** A yes: both get up from whatever they were doing and head there now, together. */
   private goTogether(chat: BarChat): void {
     const [a, b] = chat.speakers;
+    if (chat.invite!.to === 'pickleball') {
+      this.startPickleballGame(a, b);
+      return;
+    }
     const seats = this.seatsTogether(a, b, chat.invite!.to);
     if (!seats) return; // taken while they talked
     const stay = randomBetween(PATRON_DRINK_MIN_SEC, PATRON_DRINK_MAX_SEC);
@@ -806,6 +824,67 @@ export class OfficeState {
         ch.frameTimer = 0;
       }
     }
+  }
+
+  /** The pickleball court's footprint (the first one placed), or null if there is none. */
+  private court(): PickleballCourt | null {
+    const item = this.layout.furniture.find((f) => f.type === PICKLEBALL_COURT_FURNITURE_TYPE);
+    const entry = item ? getCatalogEntry(item.type) : undefined;
+    if (!item || !entry) return null;
+    return { col: item.col, row: item.row, w: entry.footprintW, h: entry.footprintH };
+  }
+
+  /** Off to the court: whoever is nearer the left side takes it. Both drop
+   *  any seat or bed and are off their schedule until the game ends. */
+  private startPickleballGame(a: Character, b: Character): void {
+    const court = this.court();
+    if (!court || this.pickleball || this.exercise) return;
+    const [left, right] = courtSides(court);
+    const dist = (ch: Character, t: { col: number; row: number }) =>
+      Math.abs(ch.tileCol - t.col) + Math.abs(ch.tileRow - t.row);
+    const players: [Character, Character] =
+      dist(a, left) + dist(b, right) <= dist(b, left) + dist(a, right) ? [a, b] : [b, a];
+    const sides = [left, right];
+    const paths = players.map((ch, i) =>
+      findPath(ch.tileCol, ch.tileRow, sides[i].col, sides[i].row, this.tileMap, this.blockedTiles),
+    ) as [Array<{ col: number; row: number }>, Array<{ col: number; row: number }>];
+    // No way onto the court from where one of them is: no game
+    if (paths.some((p, i) => p.length === 0 && dist(players[i], sides[i]) > 0)) return;
+    for (const ch of players) {
+      ch.isActive = false;
+      ch.seatId = null;
+      ch.restSpot = null;
+      ch.lostDetours = 0;
+      ch.seatTimer = 0;
+      ch.onSofa = false;
+      ch.sipping = false;
+      ch.glassSlot = null;
+    }
+    this.pickleball = startPickleball(players, court, paths);
+  }
+
+  /** Game over (or called off): both go back to resting, and the ball goes away. */
+  private endPickleballGame(): void {
+    if (!this.pickleball) return;
+    endPickleball(this.pickleball);
+    for (const p of this.pickleball.players) sendPatronToRest(p);
+    this.pickleball = null;
+  }
+
+  /** The game, and the ball drawn in flight. Called off if a player leaves the
+   *  map (its agent twin showed up) or the court was removed. */
+  private tickPickleball(dt: number): void {
+    const game = this.pickleball;
+    if (game) {
+      const drawn = new Set(this.getDrawnCharacters());
+      const stillOn = game.players.every((p) => drawn.has(p)) && this.court() !== null;
+      if (!stillOn || !updatePickleball(game, dt)) this.endPickleballGame();
+    }
+    const ball = ballInstances(this.pickleball);
+    if (ball.length === 0 && this.ball.length === 0) return;
+    const old = new Set(this.ball);
+    this.ball = ball;
+    this.furniture = [...this.furniture.filter((f) => !old.has(f)), ...ball];
   }
 
   /** Seat uids are the chair uid, or `uid:N` for the extra seats of a multi-seat piece. */
@@ -927,9 +1006,11 @@ export class OfficeState {
       updateExerciseChatter(this.exercise, dt);
       return;
     }
+    // Pickleball players have their own calls (tickPickleball)
+    const onCourt = new Set(this.pickleball?.players);
     const talkers = [
       ...[...this.characters.values()].filter((ch) => !ch.matrixEffect),
-      ...this.getVisiblePatrons().filter((p) => this.gameTitle(p) === null),
+      ...this.getVisiblePatrons().filter((p) => this.gameTitle(p) === null && !onCourt.has(p)),
     ];
     // The waiter only talks while serving (see updateWaiter)
     this.chats = updateChats(
@@ -944,7 +1025,7 @@ export class OfficeState {
     );
     const talking = new Set(talkers);
     for (const ch of [...this.characters.values(), ...this.patrons]) {
-      if (!talking.has(ch)) ch.speech = null;
+      if (!talking.has(ch) && !onCourt.has(ch)) ch.speech = null;
     }
   }
 
@@ -1941,6 +2022,7 @@ export class OfficeState {
   startExercise(): void {
     this.nextExerciseAt = Date.now() + EXERCISE_INTERVAL_MS;
     if (this.exercise) return;
+    this.endPickleballGame(); // everyone joins the break, players too
     const members = [
       ...[...this.characters.values()].filter((ch) => !ch.matrixEffect),
       ...this.getVisiblePatrons(),
@@ -2110,6 +2192,7 @@ export class OfficeState {
         p.restSpot = null;
         continue;
       }
+      if (this.pickleball?.players.includes(p)) continue; // on court: tickPickleball
       const partner = held.get(p);
       if (inLine.has(p)) updateExerciser(p, dt);
       else if (partner) this.holdForHello(p, partner);
@@ -2119,6 +2202,7 @@ export class OfficeState {
     this.tickExercise(dt);
     this.updateSofaSitting(dt);
     this.updateChat(dt);
+    this.tickPickleball(dt);
 
     // ── Pet FSM ────────────────────────────────────────────────
     for (const pet of this.pets) {

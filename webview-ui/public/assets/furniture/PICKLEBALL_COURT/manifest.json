@@ -1,0 +1,13 @@
+{
+  "id": "PICKLEBALL_COURT",
+  "name": "Pickleball Court",
+  "category": "misc",
+  "type": "asset",
+  "canPlaceOnWalls": false,
+  "canPlaceOnSurfaces": false,
+  "backgroundTiles": 4,
+  "width": 128,
+  "height": 64,
+  "footprintW": 8,
+  "footprintH": 4
+}

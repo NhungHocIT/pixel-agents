@@ -6,7 +6,9 @@
  *   GAME     — in the game room / at a gaming PC
  *   SOFA     — on the lounge sofa
  *   STREET   — two people bumping into each other on the way somewhere
- *   INVITE   — one asks the other along for a beer or to the sofa; a yes sends both
+ *   INVITE   — one asks the other along for a beer, to the sofa or to play
+ *              pickleball; a yes sends both
+ *   PICKLEBALL — calls during a game on the court
  *   EXERCISE — the exercise break (coach calls and the line's replies)
  *   OWNER    — TNhunn (USER_AVATAR_NAME), who owns the agents, dropping by; TNhunn opens
  *   PAIR     — storyline pairs, by name (pair[0] opens)
@@ -304,8 +306,9 @@ const WAITER_SOFA: readonly Script[] = [
 ];
 
 // ── Rủ đi ────────────────────────────────────────────────────
-/** Where an invite goes: a beer at a bar table (two at one table), or the sofa. */
-export type InviteTo = 'beer' | 'sofa';
+/** Where an invite goes: a beer at a bar table (two at one table), the sofa,
+ *  or a game of pickleball on the court. */
+export type InviteTo = 'beer' | 'sofa' | 'pickleball';
 
 /** Invites: the first speaker asks, the other answers. On a yes both go there together. */
 const INVITE_YES: Record<InviteTo, readonly Script[]> = {
@@ -320,6 +323,12 @@ const INVITE_YES: Record<InviteTo, readonly Script[]> = {
     ['Mỏi chân quá, ra sofa ngồi đi', 'Chuẩn, đi thôi 🛋️'],
     ['Ra sofa ăn trái cây không? 🍎', 'Đi, đi!'],
   ],
+  pickleball: [
+    ['Đánh pickleball không? 🏓', 'Chơi luôn!'],
+    ['Ra sân làm vài trận pickleball đi', 'Ok, thua bao nước nha!'],
+    ['Ngồi lâu mỏi lưng, đi đánh pickleball không?', 'Đi, khởi động thôi 💪'],
+    ['Solo pickleball không?', 'Sợ gì, ra sân!'],
+  ],
 };
 const INVITE_NO: Record<InviteTo, readonly Script[]> = {
   beer: [
@@ -330,6 +339,27 @@ const INVITE_NO: Record<InviteTo, readonly Script[]> = {
     ['Ra sofa ngồi không?', 'Thôi, tui đứng đây được rồi'],
     ['Ra sofa nghỉ chút không?', 'Để lát nữa nha'],
   ],
+  pickleball: [
+    ['Đánh pickleball không? 🏓', 'Thôi, nay đau tay quá'],
+    ['Ra sân đánh pickleball không?', 'Để mai nha, giờ mệt rồi'],
+  ],
+};
+
+/** Calls during a pickleball game; `finish` when time is up. */
+export const PICKLEBALL = {
+  rally: [
+    'Đỡ nè!',
+    'Bóng đẹp!',
+    'Out rồi!',
+    'Ăn điểm nha 😎',
+    'Smash nè! 💥',
+    'Bóng vào kitchen rồi!',
+    '3-2, giao bóng!',
+    'Dink nhẹ thôi 🏓',
+    'Ối, hụt 😅',
+    'Ghê vậy!',
+  ],
+  finish: 'Hay quá, mai đánh tiếp! 🏓',
 };
 
 export function inviteDialogue(to: InviteTo, accepted: boolean): Script {
