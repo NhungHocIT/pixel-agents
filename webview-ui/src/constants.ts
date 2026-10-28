@@ -548,7 +548,7 @@ export const MUGSHOT_DISPLAY_PX = MUGSHOT_CROP_SIDE_PX * MUGSHOT_RENDER_ZOOM;
  *  still uses the pixel font. */
 export const TERMINAL_FONT_FAMILY =
   'ui-monospace, SFMono-Regular, Menlo, Consolas, "DejaVu Sans Mono", monospace';
-export const TERMINAL_FONT_SIZE_PX = 13;
+export const TERMINAL_FONT_SIZE_PX = 20;
 /** Lines xterm retains client-side (independent of the server's replay ring). */
 export const TERMINAL_SCROLLBACK_LINES = 5_000;
 /** Debounce for propagating a resize to the PTY (fit on every frame thrashes it). */
@@ -573,27 +573,28 @@ export const TERMINAL_OSC52_MAX_BASE64_CHARS = 4_000_000;
 
 /** xterm theme, matched to the office palette (index.css :root). */
 export const TERMINAL_THEME = {
-  background: '#181828',
-  foreground: 'rgba(255, 255, 255, 0.9)',
-  cursor: '#6030ff',
-  cursorAccent: '#181828',
-  selectionBackground: 'rgba(96, 48, 255, 0.4)',
-  black: '#1e1e2e',
-  red: '#d14249',
-  green: '#89d185',
-  yellow: '#cca700',
-  blue: '#3794ff',
-  magenta: '#746fff',
-  cyan: '#4ad9d9',
-  white: 'rgba(255, 255, 255, 0.9)',
-  brightBlack: '#4a4a6a',
-  brightRed: '#ff6b72',
-  brightGreen: '#a8e5a4',
-  brightYellow: '#ffd700',
-  brightBlue: '#66aaff',
-  brightMagenta: '#a29bff',
-  brightCyan: '#7fe8e8',
-  brightWhite: '#ffffff',
+  background: '#ffffff',
+  foreground: '#000000',
+  cursor: '#000000',
+  cursorAccent: '#ffffff',
+  selectionBackground: 'rgba(96, 48, 255, 0.25)',
+  // ANSI colors darkened so they stay readable on the white background.
+  black: '#000000',
+  red: '#c41a16',
+  green: '#1a7f37',
+  yellow: '#8a6d00',
+  blue: '#0451a5',
+  magenta: '#8b2fc9',
+  cyan: '#0e7490',
+  white: '#555555',
+  brightBlack: '#666666',
+  brightRed: '#d73a49',
+  brightGreen: '#22863a',
+  brightYellow: '#9a7400',
+  brightBlue: '#005cc5',
+  brightMagenta: '#6f42c1',
+  brightCyan: '#0598bc',
+  brightWhite: '#333333',
 } as const;
 
 // ── Mobile shell ─────────────────────────────────────────────

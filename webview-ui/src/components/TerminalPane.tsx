@@ -243,6 +243,7 @@ export function TerminalPane({
       style={
         {
           display: isActive ? '' : 'none',
+          background: TERMINAL_THEME.background,
           // Consumed by the `.xterm, .xterm *` rule in index.css to beat the
           // global `* { font-pixel }` base rule. Fed from the same constant
           // xterm measures its cell grid with, so CSS can't drift from metrics.
