@@ -1,5 +1,6 @@
 import { FitAddon } from '@xterm/addon-fit';
 import { WebLinksAddon } from '@xterm/addon-web-links';
+import { WebglAddon } from '@xterm/addon-webgl';
 import { Terminal } from '@xterm/xterm';
 import type { CSSProperties } from 'react';
 import { useEffect, useRef } from 'react';
@@ -159,6 +160,17 @@ export function TerminalPane({
       // here.
       if (!term.element) {
         term.open(host);
+        // GPU renderer: the default DOM renderer rebuilds a span per cell on
+        // every repaint, which makes typing into a full-screen TUI lag. Needs
+        // an opened terminal; on failure or a lost GL context xterm falls back
+        // to the DOM renderer.
+        try {
+          const webgl = new WebglAddon();
+          webgl.onContextLoss(() => webgl.dispose());
+          term.loadAddon(webgl);
+        } catch {
+          // No WebGL2 here; the DOM renderer stays.
+        }
         if (autoFocusRef.current) term.focus();
       }
       try {
