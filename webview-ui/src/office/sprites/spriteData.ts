@@ -1,8 +1,9 @@
 import type { ColorValue } from '../../components/ui/types.js';
-import { PALETTE_COUNT } from '../../constants.js';
+import { CHARACTER_FRAME_W, PALETTE_COUNT } from '../../constants.js';
 import { adjustSprite } from '../colorize.js';
 import type { Direction, SpriteData } from '../types.js';
 import { Direction as Dir } from '../types.js';
+import { buildDrinkingPair, buildSleepingPair, buildWaterSipPair } from './barSprites.js';
 import bubblePermissionData from './bubble-permission.json';
 import bubblePetData from './bubble-pet.json';
 import bubbleWaitingData from './bubble-waiting.json';
@@ -51,6 +52,31 @@ export function getLoadedCharacterCount(): number {
   return loadedCharacters ? loadedCharacters.length : PALETTE_COUNT;
 }
 
+/** Sprite pixels per world pixel of a character frame: 1 for the classic
+ *  16×32 frames, 2 for high-resolution 32×64 frames, and so on. */
+export function characterSpriteScale(sprite: SpriteData): number {
+  return Math.max(1, Math.round((sprite[0]?.length ?? CHARACTER_FRAME_W) / CHARACTER_FRAME_W));
+}
+
+const downsampleCache = new WeakMap<SpriteData, SpriteData>();
+
+/** A classic-size (16×32) copy of a high-resolution character frame, for
+ *  effects that work on the world pixel grid (matrix spawn/despawn). */
+export function toWorldResolution(sprite: SpriteData): SpriteData {
+  const scale = characterSpriteScale(sprite);
+  if (scale === 1) return sprite;
+  const cached = downsampleCache.get(sprite);
+  if (cached) return cached;
+  const out: SpriteData = [];
+  for (let y = 0; y < sprite.length; y += scale) {
+    const row: string[] = [];
+    for (let x = 0; x < sprite[y].length; x += scale) row.push(sprite[y][x]);
+    out.push(row);
+  }
+  downsampleCache.set(sprite, out);
+  return out;
+}
+
 /** Flip a SpriteData horizontally (for generating left sprites from right) */
 function flipSpriteHorizontal(sprite: SpriteData): SpriteData {
   return sprite.map((row) => [...row].reverse());
@@ -60,16 +86,47 @@ function flipSpriteHorizontal(sprite: SpriteData): SpriteData {
 // Sprite resolution + caching
 // ════════════════════════════════════════════════════════════════
 
-export interface CharacterSprites {
+/** Frames cut straight from the character PNGs. */
+interface BaseCharacterSprites {
   walk: Record<Direction, [SpriteData, SpriteData, SpriteData, SpriteData]>;
   typing: Record<Direction, [SpriteData, SpriteData]>;
   reading: Record<Direction, [SpriteData, SpriteData]>;
 }
 
+export interface CharacterSprites extends BaseCharacterSprites {
+  /** Bar theme: working agents drink beer instead of typing/reading. */
+  drinking: Record<Direction, [SpriteData, SpriteData]>;
+  /** Bar theme: idle agents asleep in a bed (Zzz bob). */
+  sleeping: [SpriteData, SpriteData];
+  /** Bar theme: sofa sitters sipping water from their glass. */
+  waterSip: Record<Direction, [SpriteData, SpriteData]>;
+}
+
 const spriteCache = new Map<string, CharacterSprites>();
 
+/** Add the bar-theme frames, composed after any hue shift so the mug and
+ *  blanket keep their own colours. */
+function withBarSprites(base: BaseCharacterSprites): CharacterSprites {
+  return {
+    ...base,
+    drinking: {
+      [Dir.DOWN]: buildDrinkingPair(base.typing[Dir.DOWN], Dir.DOWN),
+      [Dir.UP]: buildDrinkingPair(base.typing[Dir.UP], Dir.UP),
+      [Dir.RIGHT]: buildDrinkingPair(base.typing[Dir.RIGHT], Dir.RIGHT),
+      [Dir.LEFT]: buildDrinkingPair(base.typing[Dir.LEFT], Dir.LEFT),
+    } as Record<Direction, [SpriteData, SpriteData]>,
+    sleeping: buildSleepingPair(base.walk[Dir.DOWN][1]),
+    waterSip: {
+      [Dir.DOWN]: buildWaterSipPair(base.typing[Dir.DOWN], Dir.DOWN),
+      [Dir.UP]: buildWaterSipPair(base.typing[Dir.UP], Dir.UP),
+      [Dir.RIGHT]: buildWaterSipPair(base.typing[Dir.RIGHT], Dir.RIGHT),
+      [Dir.LEFT]: buildWaterSipPair(base.typing[Dir.LEFT], Dir.LEFT),
+    } as Record<Direction, [SpriteData, SpriteData]>,
+  };
+}
+
 /** Apply hue shift to every sprite in a CharacterSprites set */
-function hueShiftSprites(sprites: CharacterSprites, hueShift: number): CharacterSprites {
+function hueShiftSprites(sprites: BaseCharacterSprites, hueShift: number): BaseCharacterSprites {
   const color: ColorValue = { h: hueShift, s: 0, b: 0, c: 0 };
   const shift = (s: SpriteData) => adjustSprite(s, color);
   const shiftWalk = (
@@ -120,7 +177,7 @@ export function getCharacterSprites(paletteIndex: number, hueShift = 0): Charact
   const cached = spriteCache.get(cacheKey);
   if (cached) return cached;
 
-  let sprites: CharacterSprites;
+  let sprites: BaseCharacterSprites;
 
   if (loadedCharacters) {
     // Use pre-colored character sprites directly (no palette swapping)
@@ -182,6 +239,7 @@ export function getCharacterSprites(paletteIndex: number, hueShift = 0): Charact
     sprites = hueShiftSprites(sprites, hueShift);
   }
 
-  spriteCache.set(cacheKey, sprites);
-  return sprites;
+  const full = withBarSprites(sprites);
+  spriteCache.set(cacheKey, full);
+  return full;
 }

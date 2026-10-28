@@ -55,6 +55,21 @@ export function getCachedSprite(sprite: SpriteData, zoom: number): HTMLCanvasEle
   const cached = cache.get(sprite);
   if (cached) return cached;
 
+  // Shrinking (high-resolution character sheets at a small zoom): painting
+  // sub-pixel rects smears neighbouring pixels together. Paint at full size,
+  // then scale down with proper filtering, halving first so no detail is skipped.
+  if (zoom < 1) {
+    let src = getCachedSprite(sprite, 1);
+    const targetW = Math.max(1, Math.round(sprite[0].length * zoom));
+    const targetH = Math.max(1, Math.round(sprite.length * zoom));
+    while (src.width / 2 >= targetW && src.height / 2 >= targetH) {
+      src = scaleCanvas(src, Math.round(src.width / 2), Math.round(src.height / 2));
+    }
+    const small = scaleCanvas(src, targetW, targetH);
+    cache.set(sprite, small);
+    return small;
+  }
+
   const rows = sprite.length;
   const cols = sprite[0].length;
   const canvas = document.createElement('canvas');
@@ -74,4 +89,16 @@ export function getCachedSprite(sprite: SpriteData, zoom: number): HTMLCanvasEle
 
   cache.set(sprite, canvas);
   return canvas;
+}
+
+/** A filtered (smoothed) resize of a canvas. */
+function scaleCanvas(src: HTMLCanvasElement, w: number, h: number): HTMLCanvasElement {
+  const out = document.createElement('canvas');
+  out.width = w;
+  out.height = h;
+  const ctx = out.getContext('2d')!;
+  ctx.imageSmoothingEnabled = true;
+  ctx.imageSmoothingQuality = 'high';
+  ctx.drawImage(src, 0, 0, w, h);
+  return out;
 }

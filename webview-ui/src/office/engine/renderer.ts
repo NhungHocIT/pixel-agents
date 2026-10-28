@@ -17,7 +17,6 @@ import {
   BUTTON_RADIUS_ZOOM_FACTOR,
   CARPET_DEFAULT_ACCENT_COLOR,
   CARPET_DEFAULT_COLOR,
-  CHARACTER_SITTING_OFFSET_PX,
   CHARACTER_Z_SORT_OFFSET,
   DELETE_BUTTON_BG,
   FALLBACK_FLOOR_COLOR,
@@ -51,7 +50,12 @@ import {
 } from '../sprites/carpetTiles.js';
 import { getPetSprites } from '../sprites/petSpriteData.js';
 import { getCachedSprite, getOutlineSprite } from '../sprites/spriteCache.js';
-import { BUBBLE_HEART_SPRITE, getCharacterSprites } from '../sprites/spriteData.js';
+import {
+  BUBBLE_HEART_SPRITE,
+  characterSpriteScale,
+  getCharacterSprites,
+  toWorldResolution,
+} from '../sprites/spriteData.js';
 import type {
   AreaDefinition,
   CarpetTile,
@@ -62,9 +66,9 @@ import type {
   SpriteData,
   TileType as TileTypeVal,
 } from '../types.js';
-import { CharacterState, TILE_SIZE, TileType } from '../types.js';
+import { TILE_SIZE, TileType } from '../types.js';
 import { getWallInstances, hasWallSprites, wallColorToHex } from '../wallTiles.js';
-import { getCharacterSprite } from './characters.js';
+import { characterDrawOffsetPx, getCharacterSprite } from './characters.js';
 import { renderMatrixEffect } from './matrixEffect.js';
 import { getPetSpriteData } from './petEntity.js';
 
@@ -384,9 +388,11 @@ export function renderScene(
   for (const ch of characters) {
     const sprites = getCharacterSprites(ch.palette, ch.hueShift);
     const spriteData = getCharacterSprite(ch, sprites);
-    const cached = getCachedSprite(spriteData, zoom);
-    // Sitting offset: shift character down when seated so they visually sit in the chair
-    const sittingOffset = ch.state === CharacterState.TYPE ? CHARACTER_SITTING_OFFSET_PX : 0;
+    // High-resolution frames (e.g. 32×64) fill the same 16×32 world footprint
+    const charZoom = zoom / characterSpriteScale(spriteData);
+    const cached = getCachedSprite(spriteData, charZoom);
+    // Sitting/sleeping offset: shift character down so they sit in the chair or lie on the bed
+    const sittingOffset = characterDrawOffsetPx(ch);
     // Anchor at bottom-center of character — round to integer device pixels
     const drawX = Math.round(offsetX + ch.x * zoom - cached.width / 2);
     const drawY = Math.round(offsetY + (ch.y + sittingOffset) * zoom - cached.height);
@@ -404,7 +410,7 @@ export function renderScene(
     if (ch.matrixEffect) {
       const mDrawX = drawX;
       const mDrawY = drawY;
-      const mSpriteData = spriteData;
+      const mSpriteData = toWorldResolution(spriteData);
       const mCh = ch;
       drawables.push({
         zY: charZY,
@@ -424,9 +430,9 @@ export function renderScene(
     if (isSelected || isHovered) {
       const outlineAlpha = isSelected ? SELECTED_OUTLINE_ALPHA : HOVERED_OUTLINE_ALPHA;
       const outlineData = getOutlineSprite(spriteData);
-      const outlineCached = getCachedSprite(outlineData, zoom);
-      const olDrawX = drawX - zoom; // 1 sprite-pixel offset, scaled
-      const olDrawY = drawY - zoom; // outline follows sitting offset via drawY
+      const outlineCached = getCachedSprite(outlineData, charZoom);
+      const olDrawX = Math.round(drawX - charZoom); // 1 sprite-pixel offset, scaled
+      const olDrawY = Math.round(drawY - charZoom); // outline follows sitting offset via drawY
       drawables.push({
         zY: charZY - OUTLINE_Z_SORT_OFFSET, // sort just before character
         draw: (c) => {

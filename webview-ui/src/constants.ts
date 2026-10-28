@@ -17,6 +17,176 @@ export const WANDER_MOVES_BEFORE_REST_MIN = 3;
 export const WANDER_MOVES_BEFORE_REST_MAX = 6;
 export const SEAT_REST_MIN_SEC = 120.0;
 export const SEAT_REST_MAX_SEC = 240.0;
+/** Working agents drink beer: mug up, mug down. Slower than the old typing tick. */
+export const DRINK_FRAME_DURATION_SEC = 0.9;
+/** Zzz bob while an agent sleeps in its bed. */
+export const SLEEP_FRAME_DURATION_SEC = 0.8;
+
+// ── Exercise break (everyone lines up and works out) ────────
+/** Time between exercise breaks (wall clock). */
+export const EXERCISE_INTERVAL_MS = 45 * 60 * 1000;
+/** How long the workout itself lasts, once the line has formed. */
+export const EXERCISE_WORKOUT_SEC = 10 * 60;
+/** Longest wait for stragglers to reach the line before starting anyway. */
+export const EXERCISE_GATHER_MAX_SEC = 30;
+/** One beat of an exercise move (hop up / land, twist left / right...). */
+export const EXERCISE_BEAT_SEC = 0.4;
+/** Each move is held this long before switching to the next one. */
+export const EXERCISE_MOVE_SEC = 10;
+/** How high (sprite px) a jumping jack lifts the character. */
+export const EXERCISE_HOP_PX = 3;
+
+// ── Bar theme (beer mug + sleeping blanket overlays) ────────
+/** Furniture type idle agents walk to and sleep in. */
+export const BED_FURNITURE_TYPE = 'BED';
+/** Furniture type idle agents sit at to play games. */
+export const GAMING_CHAIR_FURNITURE_TYPE = 'GAMING_CHAIR';
+/** Display name per character palette index, in the order of
+ *  ~/.pixel-agents/custom-assets/assets/characters/char_N.png. */
+export const CHARACTER_NAMES: readonly string[] = [
+  'Gojo',
+  'Giyu',
+  'Naruto',
+  'Kakashi',
+  'Nezuko',
+  'Hinata',
+  'Gray',
+  'Nanami',
+  'Zoro',
+  'Dolia',
+  'Juvia',
+  'TNhunn',
+  'Tèo',
+];
+
+/** Bar storyline, by CHARACTER_NAMES entry.
+ *  couples: sit together, share a double bed, hearts when close.
+ *  buddies: sit at the same table, rest side by side.
+ *  followers: [follower, leader] — sits, rests and wanders near the leader.
+ *  wanderers: take a few wrong turns before reaching any destination. */
+export const BAR_STORY = {
+  couples: [
+    ['Naruto', 'Hinata'],
+    ['Gray', 'Juvia'],
+  ],
+  buddies: [['Gojo', 'Nanami']],
+  followers: [
+    ['Kakashi', 'Naruto'],
+    ['Nezuko', 'Giyu'],
+  ],
+  wanderers: ['Zoro'],
+} as const;
+/** A partner/buddy changes activity this soon after the other one does. */
+export const STORY_SYNC_DELAY_SEC = 3;
+/** Wrong turns a wanderer takes on the way to a destination. */
+export const STORY_WANDERER_DETOURS_MIN = 1;
+export const STORY_WANDERER_DETOURS_MAX = 3;
+/** A follower wanders within this many tiles of its leader. */
+export const STORY_FOLLOW_RADIUS_TILES = 3;
+/** Couples within this many tiles of each other show a heart now and then. */
+export const STORY_HEART_RANGE_TILES = 2;
+export const STORY_HEART_SHOW_SEC = 2;
+export const STORY_HEART_COOLDOWN_MIN_SEC = 8;
+export const STORY_HEART_COOLDOWN_MAX_SEC = 16;
+/** The user's own avatar: plays at a gaming PC whenever the user is in League of Legends
+ *  (server `lolStatus`), and leaves the gaming PCs to others otherwise. */
+export const USER_AVATAR_NAME = 'TNhunn';
+/** The avatar is the boss of the agents: no bar seat, no bed — it walks the
+ *  floor, hanging around one agent's desk this long before the next. */
+export const BOSS_VISIT_MIN_SEC = 25;
+export const BOSS_VISIT_MAX_SEC = 60;
+/** The bar's waiter: carries drinks to whoever is seated in the bar or
+ *  playing in the game room, then heads back to the counter. Never a customer. */
+export const WAITER_NAME = 'Tèo';
+/** Pause at the counter between rounds. */
+export const WAITER_PAUSE_MIN_SEC = 3;
+export const WAITER_PAUSE_MAX_SEC = 8;
+/** How long the waiter stands at a table, serving. */
+export const WAITER_SERVE_SEC = 4;
+/** The same customer isn't served again within this long. */
+export const WAITER_RESERVE_SEC = 90;
+/** Gap (CSS px) between the avatar's name tag and its League title above it. */
+export const GAME_TITLE_LIFT_PX = 22;
+/** The League title: a compact tag led by the game's logo (taken from the
+ *  user's own client, LeagueClient.exe). */
+export const GAME_TITLE_FONT_PX = 16;
+export const GAME_TITLE_ICON_PX = 18;
+/** Furniture types whose seats make up the lounge sofa. */
+export const SOFA_FURNITURE_PREFIX = 'SOFA';
+/** Chance a patron looking for a seat heads for a free sofa seat first. */
+export const SOFA_SEAT_PREFERENCE = 0.5;
+/** The table in front of the sofa: one glass of water per sofa seat stands on it. */
+export const LOUNGE_TABLE_FURNITURE_TYPE = 'LOUNGE_TABLE';
+/** Where the table top starts in its 32-tall sprite: the upper tile is a
+ *  walkable lane by the sofa, which the table edges into a little. */
+export const LOUNGE_TABLE_TOP_PX = 6;
+/** Sofa sitters drink no beer: now and then they pick up their glass, sip, put it back. */
+export const SOFA_SIP_SEC = 3;
+export const SOFA_SIP_GAP_MIN_SEC = 6;
+export const SOFA_SIP_GAP_MAX_SEC = 14;
+export const WATER_GLASS_RIM_COLOR = '#6E8798';
+export const WATER_GLASS_SHINE_COLOR = '#E8F6FF';
+export const WATER_COLOR = '#9FD3EE';
+/** Every glass is out: try again this soon. */
+export const SOFA_GLASS_RETRY_SEC = 2;
+/** Lounge table setting: a round tray of glasses, a fruit plate either side. */
+export const LOUNGE_PLATE_GAP_PX = 3;
+export const LOUNGE_TRAY_COLOR = '#C7CCD3';
+export const LOUNGE_TRAY_LIGHT_COLOR = '#E4E8ED';
+export const LOUNGE_TRAY_RIM_COLOR = '#8E939B';
+export const LOUNGE_PLATE_COLOR = '#FBFBF8';
+export const LOUNGE_PLATE_RIM_COLOR = '#A9AEB5';
+export const FRUIT_ORANGE_COLOR = '#F28C28';
+export const FRUIT_APPLE_COLOR = '#D93A3A';
+export const FRUIT_LEAF_COLOR = '#4E9A3A';
+export const FRUIT_GRAPE_COLOR = '#7B3F9E';
+export const FRUIT_BANANA_COLOR = '#F2D33A';
+/** Patrons this close (tiles) start chatting anywhere on the map... */
+export const CHAT_PAIR_RANGE_TILES = 2;
+/** ...and keep going until they are farther apart than this. */
+export const CHAT_KEEP_RANGE_TILES = 3;
+/** How long a chat line stays up: per character, clamped. */
+export const CHAT_SEC_PER_CHAR = 0.12;
+export const CHAT_LINE_MIN_SEC = 2.5;
+export const CHAT_LINE_MAX_SEC = 5;
+/** Pause after a chat before the same patron starts another. */
+export const CHAT_COOLDOWN_MIN_SEC = 4;
+export const CHAT_COOLDOWN_MAX_SEC = 10;
+/** Passing someone on the way: only right next to them, and then not again for a while. */
+export const CHAT_STREET_RANGE_TILES = 1;
+export const CHAT_STREET_COOLDOWN_MIN_SEC = 30;
+export const CHAT_STREET_COOLDOWN_MAX_SEC = 60;
+export const SPEECH_TEXT_COLOR = '#1E1E28';
+export const SPEECH_BG_COLOR = '#FFFFFF';
+export const SPEECH_FONT_PX = 16;
+export const SPEECH_MAX_WIDTH_PX = 180;
+/** Gap (CSS px) between the name tag (or match title) and the speech line above it. */
+export const SPEECH_LIFT_PX = 18;
+/** Extra lift for a heart when a speech line is up (one or two text lines tall). */
+export const SPEECH_HEART_CLEARANCE_PX = 36;
+/** Patron name tags sit this many CSS px above the head anchor. */
+export const PATRON_NAME_TAG_LIFT_PX = 6;
+/** Gap (CSS px) between a patron's name tag and the heart above it. */
+export const PATRON_HEART_LIFT_PX = 18;
+/** Fill the bar with one non-agent patron per loaded character sprite. */
+export const BAR_PATRONS_ENABLED = true;
+/** Patron ids start here so they never collide with agents (positive) or sub-agents (negative). */
+export const PATRON_ID_BASE = 1_000_000;
+export const PATRON_DRINK_MIN_SEC = 25;
+export const PATRON_DRINK_MAX_SEC = 80;
+export const PATRON_REST_MIN_SEC = 30;
+export const PATRON_REST_MAX_SEC = 90;
+/** Retry delay when a patron wants a seat but every seat is taken. */
+export const PATRON_SEAT_RETRY_SEC = 8;
+export const BAR_FOAM_COLOR = '#FFF6DC';
+export const BAR_FOAM_SHADE_COLOR = '#E9D9B0';
+export const BAR_BEER_COLOR = '#F2A51A';
+export const BAR_BEER_DARK_COLOR = '#C97D0C';
+export const BAR_MUG_HANDLE_COLOR = '#5A3A1E';
+export const BAR_BLANKET_COLOR = '#4A6FA5';
+export const BAR_BLANKET_LIGHT_COLOR = '#6B8FC4';
+export const BAR_BLANKET_DARK_COLOR = '#34507A';
+export const BAR_ZZZ_COLOR = '#FFFFFF';
 
 // ── Matrix Effect ────────────────────────────────────────────
 export const MATRIX_EFFECT_DURATION_SEC = 0.3;
@@ -37,6 +207,10 @@ export const MATRIX_TRAIL_DIM_THRESHOLD = 0.66;
 
 // ── Rendering ────────────────────────────────────────────────
 export const CHARACTER_SITTING_OFFSET_PX = 6;
+/** World width of a character frame; high-resolution sheets are integer multiples. */
+export const CHARACTER_FRAME_W = 16;
+/** Sleeping agents stand on a bed's lower tile; this drops the sprite onto the whole bed. */
+export const CHARACTER_SLEEPING_OFFSET_PX = 8;
 export const CHARACTER_Z_SORT_OFFSET = 0.5;
 export const OUTLINE_Z_SORT_OFFSET = 0.001;
 export const SELECTED_OUTLINE_ALPHA = 1.0;
@@ -83,6 +257,10 @@ export const CAMERA_FOLLOW_SNAP_THRESHOLD = 0.5;
 // ── Zoom ─────────────────────────────────────────────────────
 export const ZOOM_MIN = 1;
 export const ZOOM_MAX = 10;
+/** Auto-fit to the window may go below ZOOM_MIN so a small window shows the whole office. */
+export const ZOOM_FIT_MIN = 0.5;
+/** How often the canvas checks whether the office still fits the window. */
+export const ZOOM_FIT_CHECK_MS = 1000;
 export const ZOOM_DEFAULT_DPR_FACTOR = 2;
 export const ZOOM_LEVEL_FADE_DELAY_MS = 1500;
 export const ZOOM_LEVEL_HIDE_DELAY_MS = 2000;

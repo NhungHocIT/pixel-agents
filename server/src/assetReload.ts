@@ -1,3 +1,6 @@
+import * as fs from 'fs';
+import * as path from 'path';
+
 import type { LoadedAssets, LoadedCharacterSprites, LoadedPetSprites } from './assetLoader.js';
 import {
   loadCarpetTiles,
@@ -15,6 +18,9 @@ import {
 } from './assetLoader.js';
 import type { AssetCache } from './clientMessageHandler.js';
 import { setPaletteCount } from './paletteAssigner.js';
+
+/** Marker file in an external dir's assets/characters/ that replaces the bundled cast. */
+const REPLACE_BUNDLED_MARKER = '.replace-bundled';
 
 /**
  * Shared asset-loading helpers used by BOTH the VS Code adapter and the
@@ -46,6 +52,15 @@ export async function loadAllCharacters(
   externalDirs: string[],
 ): Promise<LoadedCharacterSprites | null> {
   let chars = await loadCharacterSprites(assetsRoot);
+  // An external dir holding assets/characters/.replace-bundled supplies the
+  // whole cast: the bundled characters are dropped instead of merged.
+  if (
+    externalDirs.some((d) =>
+      fs.existsSync(path.join(d, 'assets', 'characters', REPLACE_BUNDLED_MARKER)),
+    )
+  ) {
+    chars = null;
+  }
   for (const extraDir of externalDirs) {
     const extra = await loadExternalCharacterSprites(extraDir);
     if (extra) {

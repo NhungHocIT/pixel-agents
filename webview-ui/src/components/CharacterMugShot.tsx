@@ -8,7 +8,7 @@ import {
   MUGSHOT_RENDER_ZOOM,
 } from '../constants.js';
 import { getCachedSprite } from '../office/sprites/spriteCache.js';
-import { getCharacterSprites } from '../office/sprites/spriteData.js';
+import { characterSpriteScale, getCharacterSprites } from '../office/sprites/spriteData.js';
 import { Direction } from '../office/types.js';
 
 interface CharacterMugShotProps {
@@ -39,7 +39,8 @@ export function CharacterMugShot({
     if (!ctx) return;
 
     const front = getCharacterSprites(palette, hueShift).walk[Direction.DOWN][0];
-    const full = getCachedSprite(front, MUGSHOT_RENDER_ZOOM);
+    // Crop maths is in world pixels; high-resolution frames render at zoom / scale
+    const full = getCachedSprite(front, MUGSHOT_RENDER_ZOOM / characterSpriteScale(front));
 
     const side = MUGSHOT_CROP_SIDE_PX * MUGSHOT_RENDER_ZOOM;
     canvas.width = side;
