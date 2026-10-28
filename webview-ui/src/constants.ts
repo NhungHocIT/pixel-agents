@@ -91,10 +91,11 @@ export const STORY_HEART_COOLDOWN_MAX_SEC = 16;
 /** The user's own avatar: plays at a gaming PC whenever the user is in League of Legends
  *  (server `lolStatus`), and leaves the gaming PCs to others otherwise. */
 export const USER_AVATAR_NAME = 'TNhunn';
-/** The avatar is the boss of the agents: no bar seat, no bed — it walks the
- *  floor, hanging around one agent's desk this long before the next. */
-export const BOSS_VISIT_MIN_SEC = 25;
-export const BOSS_VISIT_MAX_SEC = 60;
+/** The avatar owns the agents (friends, not staff) and lives like everyone
+ *  else — drinks, naps, the sofa. Wandering, it drops by the agents, hanging
+ *  around one agent's desk this long before the next. */
+export const OWNER_VISIT_MIN_SEC = 25;
+export const OWNER_VISIT_MAX_SEC = 60;
 /** The bar's waiter: carries drinks to whoever is seated in the bar or
  *  playing in the game room, then heads back to the counter. Never a customer. */
 export const WAITER_NAME = 'Tèo';

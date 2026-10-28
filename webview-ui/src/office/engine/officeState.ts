@@ -4,8 +4,6 @@ import {
   AUTO_ON_SIDE_DEPTH,
   BAR_PATRONS_ENABLED,
   BED_FURNITURE_TYPE,
-  BOSS_VISIT_MAX_SEC,
-  BOSS_VISIT_MIN_SEC,
   CHARACTER_HIT_HALF_WIDTH,
   CHARACTER_HIT_HEIGHT,
   CHARACTER_NAMES,
@@ -23,6 +21,8 @@ import {
   LOUNGE_TABLE_FURNITURE_TYPE,
   LOUNGE_TABLE_TOP_PX,
   MAX_PET_ID_LENGTH,
+  OWNER_VISIT_MAX_SEC,
+  OWNER_VISIT_MIN_SEC,
   PATRON_SEAT_RETRY_SEC,
   PET_HIT_HALF_WIDTH,
   PET_HIT_HEIGHT,
@@ -102,7 +102,7 @@ import type { WaiterRound } from './waiter.js';
 import { isServable, newWaiterRound, serveSpots } from './waiter.js';
 import { startWalk, stepWalk } from './walking.js';
 
-/** Palettes of the staff — the boss (the user's avatar) and the waiter —
+/** Palettes of TNhunn (the user's avatar, owner of the agents) and the waiter —
  *  never given to an agent. */
 const STAFF_PALETTES = new Set(
   [USER_AVATAR_NAME, WAITER_NAME].map((n) => CHARACTER_NAMES.indexOf(n)).filter((i) => i >= 0),
@@ -185,9 +185,9 @@ export class OfficeState {
   /** The exercise break in progress, and when (wall clock) the next one starts. */
   private exercise: ExerciseSession | null = null;
   private nextExerciseAt = Date.now() + EXERCISE_INTERVAL_MS;
-  /** The boss's rounds: whose desk they are hanging around, and for how long. */
-  private bossVisitId: number | null = null;
-  private bossVisitTimer = 0;
+  /** TNhunn dropping by: whose desk they are hanging around, and for how long. */
+  private ownerVisitId: number | null = null;
+  private ownerVisitTimer = 0;
   /** The waiter's current round, where they wait between rounds (lazily
    *  picked: by the bar seats), and when (sim seconds) each customer was last served. */
   private waiterRound: WaiterRound = newWaiterRound(WAITER_PAUSE_MIN_SEC);
@@ -438,17 +438,18 @@ export class OfficeState {
     p.restSpot = { ...pick };
   }
 
-  /** Not in League, the boss walks the floor: hangs around one agent's desk
-   *  for a while (chatting with whoever is near), then moves on to the next. */
-  private steerBossRounds(p: Character, dt: number): void {
-    if (p.restSpot) return; // at a gaming PC, in League
-    this.bossVisitTimer -= dt;
-    let target = this.bossVisitId !== null ? this.characters.get(this.bossVisitId) : undefined;
-    if (!target || this.bossVisitTimer <= 0) {
+  /** When TNhunn wanders, it's to drop by the agents: hang around one agent's
+   *  desk for a while (chatting with whoever is near), then the next. Seated,
+   *  resting or gaming, TNhunn is just doing what everyone does. */
+  private steerOwnerRounds(p: Character, dt: number): void {
+    if (p.restSpot || p.isActive) return;
+    this.ownerVisitTimer -= dt;
+    let target = this.ownerVisitId !== null ? this.characters.get(this.ownerVisitId) : undefined;
+    if (!target || this.ownerVisitTimer <= 0) {
       const agents = [...this.characters.values()].filter((c) => !c.matrixEffect);
       target = agents[Math.floor(Math.random() * agents.length)];
-      this.bossVisitId = target?.id ?? null;
-      this.bossVisitTimer = randomBetween(BOSS_VISIT_MIN_SEC, BOSS_VISIT_MAX_SEC);
+      this.ownerVisitId = target?.id ?? null;
+      this.ownerVisitTimer = randomBetween(OWNER_VISIT_MIN_SEC, OWNER_VISIT_MAX_SEC);
     }
     p.wanderAnchor = target ? { col: target.tileCol, row: target.tileRow } : null;
   }
@@ -622,8 +623,6 @@ export class OfficeState {
    *  back once the character is up and off it. Agents bump patrons when full. */
   private updateRestAssignment(ch: Character): void {
     if (ch.isSubagent) return;
-    // The boss never naps on the job: a gaming PC only via steerUserAvatar
-    if (this.isUserAvatar(ch)) return;
     if (ch.isActive) {
       const spot = ch.restSpot;
       if (spot && (ch.tileCol !== spot.col || ch.tileRow !== spot.row)) ch.restSpot = null;
@@ -689,7 +688,6 @@ export class OfficeState {
   /** A free bar seat for a patron: not an agent's, not another patron's.
    *  Storyline ties pick the free seat nearest the partner / buddy / leader. */
   private pickPatronSeat(p: Character): string | null {
-    if (this.isUserAvatar(p)) return null; // the boss doesn't sit down for a drink
     const used = new Set(this.patrons.filter((o) => o !== p && o.seatId).map((o) => o.seatId));
     const free = [...this.seats.values()].filter((s) => !s.assigned && !used.has(s.uid));
     if (free.length === 0) return null;
@@ -955,7 +953,7 @@ export class OfficeState {
     const wasActive = p.isActive;
     tickPatronSchedule(p, dt, () => this.pickPatronSeat(p));
     this.updateStory(p, dt, wasActive);
-    if (this.isUserAvatar(p)) this.steerBossRounds(p, dt);
+    if (this.isUserAvatar(p)) this.steerOwnerRounds(p, dt);
     this.updateRestAssignment(p);
     this.withOwnRestSpotUnblocked(p, () =>
       this.withOwnSeatUnblocked(p, () =>
@@ -1841,7 +1839,7 @@ export class OfficeState {
     // End any chats: the break has its own lines
     for (const ch of members) ch.speech = null;
     this.chats = [];
-    // The boss coaches from in front of the line rather than standing in it
+    // TNhunn leads from in front of the line rather than standing in it
     const coach = members.find((ch) => this.isUserAvatar(ch)) ?? null;
     if (coach) members.splice(members.indexOf(coach), 1);
     const near = {

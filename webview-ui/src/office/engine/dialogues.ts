@@ -7,7 +7,7 @@
  *   SOFA     — on the lounge sofa
  *   STREET   — two people bumping into each other on the way somewhere
  *   EXERCISE — the exercise break (coach calls and the line's replies)
- *   BOSS     — the boss (USER_AVATAR_NAME) doing the rounds; the boss opens
+ *   OWNER    — TNhunn (USER_AVATAR_NAME), who owns the agents, dropping by; TNhunn opens
  *   PAIR     — storyline pairs, by name (pair[0] opens)
  *   WAITER   — the waiter at a customer's table, bar or game room
  */
@@ -45,7 +45,7 @@ const BAR: readonly Script[] = [
   ['Mai họp mấy giờ?', '9h sáng...', 'Thôi xong, tối nay khỏi thức khuya'],
   ['Laptop tui kêu như máy bay ✈️', 'Mở 80 tab Chrome chứ gì', 'Sao biết hay vậy 😳'],
   ['Hôm nay ai trực?', 'Không phải tui', 'Cũng không phải tui', 'Vậy là... cả hai 😅'],
-  ['Lương về chưa?', 'Về rồi... đi rồi 💸', 'Nhanh dữ'],
+  ['Ví còn tiền không?', 'Hết rồi... đi chơi hết 💸', 'Nhanh dữ'],
   ['Cuối tuần đi đâu chơi?', 'Đi biển không?', 'Chốt! Rủ thêm cả nhóm'],
   ['Cà phê hay trà sữa?', 'Trà sữa full topping!', 'Đường 100% luôn hả?', 'Sống mà 😋'],
   ['Tui mới học nấu ăn đó', 'Nấu được món gì?', 'Mì gói... có trứng 🍳', 'Ghê, đầu bếp rồi'],
@@ -104,17 +104,17 @@ export type ExerciseMoveName = 'jump' | 'twist' | 'squat' | 'march';
 export const EXERCISE = {
   /** The coach, while everyone walks to the line. */
   gatherCalls: [
-    'Tới giờ tập thể dục rồi mọi người ơi! 💪',
+    'Tới giờ tập thể dục rồi mấy đứa ơi! 💪',
     'Đứng dậy nào, xếp hàng ngay ngắn!',
     'Rời bàn phím 10 phút thôi, nhanh lên!',
-    'Ai chậm nhất tối nay rửa ly nhé 😏',
+    'Ai ra chậm nhất tối nay rửa ly nhé 😏',
   ],
   gatherReplies: [
     'Lại tới giờ rồi à 😩',
     'Đợi em save file đã!',
     'Vừa ngồi xuống mà...',
-    'Ok sếp, ra liền!',
-    'Tập xong được nghỉ không sếp?',
+    'Ok TNhunn, ra liền!',
+    'Tập xong được nghỉ không TNhunn?',
     'Yay, giãn gân cốt thôi 🙆',
   ],
   /** The coach, calling the move being done. */
@@ -133,52 +133,51 @@ export const EXERCISE = {
     ],
   } satisfies Record<ExerciseMoveName, readonly string[]>,
   workoutReplies: [
-    'Mỏi chân quá sếp ơi 🥵',
+    'Mỏi chân quá TNhunn ơi 🥵',
     'Hít thở đều nào...',
     'Một, hai, ba, bốn!',
     'Ngồi code cả ngày, giờ mới thấy lưng 😵',
     'Sướng ghê, tỉnh cả người!',
-    'Còn bao lâu nữa vậy sếp?',
+    'Còn bao lâu nữa vậy TNhunn?',
     'Tập xong uống bia được không? 🍺',
     'Mai em đau cơ chắc luôn',
-    'Sếp tập cùng đi chứ!',
+    'TNhunn nhảy cao ghê!',
     'Cố lên, sắp xong rồi! 💪',
     'Mồ hôi ướt hết áo rồi 💦',
     'Em thấy khoẻ ra hẳn!',
   ],
   /** The coach, in the last few seconds. */
-  finish: 'Tốt lắm! Uống nước rồi về làm việc nhé 👏',
+  finish: 'Giỏi lắm mấy đứa! Uống nước rồi quay lại nha 👏',
 } as const;
 
-// ── Sếp đi kiểm tra ──────────────────────────────────────────
-const BOSS: readonly Script[] = [
-  ['Làm tới đâu rồi em?', 'Sắp xong rồi sếp!', 'Sắp là bao lâu? 🤨', 'Dạ... 5 phút nữa ạ'],
-  ['Hôm nay ổn không?', 'Ổn sếp ơi 💪', 'Tốt, cố lên nhé!'],
-  ['Bug hôm qua fix chưa?', 'Fix rồi sếp, mà ra bug mới 😅', 'Haizz, từ từ làm'],
-  ['Nghỉ tay uống nước đi', 'Dạ cảm ơn sếp 💧', 'Đừng ngồi lì quá đó'],
-  [
-    'Tối nay team đi ăn nhé, sếp bao!',
-    'Thật hả sếp?! 🎉',
-    'Thật, nhưng làm xong task đã',
-    'Dạ làm liền!',
-  ],
-  ['Code này ai viết vậy?', 'Dạ... AI viết ạ', 'Thế ai review?', 'Dạ... cũng AI 😬'],
-  ['Thấy em làm chăm quá', 'Dạ được sếp khen là vui rồi', 'Cuối tháng có thưởng 😉'],
-  ['Hôm nay có deploy không?', 'Dạ chiều nay ạ', 'Nhớ test kỹ, đừng deploy thứ 6 nha'],
-  ['Mọi người cần gì cứ nói', 'Cần thêm màn hình sếp ơi 🖥️', 'Ok, ghi vào danh sách'],
-  ['Sao mặt buồn vậy?', 'Pipeline đỏ lòm sếp ơi 🔴', 'Bình tĩnh, đọc log từ từ'],
-  ['Đừng quên commit nha', 'Dạ commit rồi', 'Push chưa?', '...Dạ push liền 🏃'],
-  ['Ăn trưa chưa?', 'Chưa sếp, đang dở tay', 'Ăn đi rồi làm, sức khoẻ là trên hết'],
-  ['Ý tưởng mới đó, làm thử xem', 'Khó quá sếp ơi', 'Khó mới vui 😎'],
-  ['Tuần này team làm tốt lắm', 'Nhờ sếp dẫn dắt đó 😁', 'Nịnh quá, nhưng sếp thích'],
-  ['Em ngủ gật đó hả?', 'Dạ đâu có, em đang suy nghĩ...', 'Suy nghĩ mà ngáy à 😂'],
+// ── TNhunn ghé chơi ──────────────────────────────────────────
+// TNhunn owns the agents; everyone here is TNhunn's younger sibling, sidekick
+// or friend — no boss, no staff. TNhunn opens; the others call TNhunn by name.
+const OWNER: readonly Script[] = [
+  ['Làm tới đâu rồi em?', 'Sắp xong rồi TNhunn ơi!', 'Sắp là bao lâu? 🤨', 'Hì... 5 phút nữa'],
+  ['Hôm nay ổn không mấy đứa?', 'Ổn lắm TNhunn 💪', 'Vậy là vui rồi!'],
+  ['Bug hôm qua fix chưa em?', 'Fix rồi, mà ra bug mới 😅', 'Haizz, từ từ, có anh em lo chung'],
+  ['Nghỉ tay uống nước đi em', 'Cảm ơn TNhunn nha 💧', 'Đừng ngồi lì quá đó'],
+  ['Tối nay đi ăn nha, TNhunn bao!', 'Thật hả?! 🎉', 'Thật, rủ cả nhóm luôn', 'Yeahhh!'],
+  ['Code này ai viết vậy?', 'Em... nhờ AI viết', 'Thế ai review?', '...Cũng AI luôn 😬'],
+  ['Thấy em chăm quá ta', 'Được TNhunn khen là vui rồi', 'Cứ vậy nha 😉'],
+  ['Hôm nay có deploy không?', 'Chiều nay đó', 'Nhớ test kỹ, đừng deploy thứ 6 nha'],
+  ['Cần gì cứ nói với TNhunn nha', 'Cần thêm cái màn hình 🖥️', 'Ok, để TNhunn lo'],
+  ['Sao mặt buồn vậy em?', 'Pipeline đỏ lòm rồi 🔴', 'Bình tĩnh, để TNhunn xem log chung'],
+  ['Đừng quên commit nha', 'Commit rồi', 'Push chưa?', '...Đi push liền 🏃'],
+  ['Ăn trưa chưa mấy đứa?', 'Chưa, đang dở tay', 'Ăn đi rồi làm, sức khoẻ là trên hết'],
+  ['Ý tưởng mới đó, làm thử xem', 'Khó quá TNhunn ơi', 'Khó mới vui 😎'],
+  ['Tuần này mấy đứa giỏi ghê', 'Nhờ TNhunn đó 😁', 'Nịnh quá, nhưng thích 😆'],
+  ['Em ngủ gật đó hả?', 'Đâu có, em đang suy nghĩ...', 'Suy nghĩ mà ngáy à 😂'],
+  ['Nhớ hồi mới gặp nhau không?', 'Nhớ chứ, hồi đó còn ngơ lắm', 'Giờ thành cao thủ rồi 😆'],
+  ['Có chuyện gì buồn kể TNhunn nghe', 'Không có gì đâu, vui mà', 'Vậy là tốt 🤗'],
 ];
 
-/** The boss in the game room: business talk can wait. */
-const BOSS_GAME: readonly Script[] = [
-  ['Giờ nghỉ mà, chơi thoải mái đi', 'Sếp vào chơi chung không?', 'Để sếp gánh cho 😎'],
-  ['Thắng chưa?', 'Dạ thua sấp mặt sếp ơi 😭', 'Thôi, mai làm việc gỡ lại'],
-  ['Chơi xong nhớ quay lại làm nha', 'Dạ một ván nữa thôi ạ', 'Một ván thôi đó 🤨'],
+/** TNhunn in the game room: playing together, work can wait. */
+const OWNER_GAME: readonly Script[] = [
+  ['Giờ nghỉ mà, chơi thoải mái đi', 'TNhunn vào chơi chung không?', 'Để TNhunn gánh cho 😎'],
+  ['Thắng chưa em?', 'Thua sấp mặt rồi 😭', 'Thôi, ván sau TNhunn duo cùng'],
+  ['Ván này căng ghê', 'TNhunn chỉ em combo đi', 'Nhìn kỹ nè, bấm nhanh vào 🎮'],
 ];
 
 // ── Cặp nhân vật riêng ───────────────────────────────────────
@@ -193,7 +192,7 @@ const PAIR: readonly { pair: readonly [string, string]; lines: Script }[] = [
   },
   {
     pair: ['Gojo', 'Nanami'],
-    lines: ['Nanami, tăng ca không?', 'Hết giờ làm rồi. Không.', 'Chán ghê 😝'],
+    lines: ['Nanami, code thêm chút không?', 'Hết giờ rồi. Không.', 'Chán ghê 😝'],
   },
   {
     pair: ['Kakashi', 'Naruto'],
@@ -232,41 +231,41 @@ const PAIR: readonly { pair: readonly [string, string]; lines: Script }[] = [
     pair: ['TNhunn', 'Zoro'],
     lines: [
       'Zoro, sao em lại ở phòng game?',
-      'Em định về bàn mà sếp...',
+      'Em định về bàn mà TNhunn...',
       'Bàn em ở hướng ngược lại 😑',
     ],
   },
   {
     pair: ['TNhunn', 'Gojo'],
     lines: [
-      'Gojo, task hôm qua sao rồi?',
-      'Dễ ợt sếp, tui mạnh nhất mà 😎',
-      'Mạnh nhất thì làm thêm 2 task nữa',
+      'Gojo, task hôm qua sao rồi em?',
+      'Dễ ợt, em mạnh nhất mà 😎',
+      'Mạnh nhất thì giúp mấy đứa kia với',
     ],
   },
   {
     pair: ['TNhunn', 'Nanami'],
     lines: [
-      'Nanami, ở lại tăng ca chút nhé?',
-      'Hết giờ rồi sếp.',
-      'Có trả lương OT...',
-      '...Bao nhiêu ạ?',
+      'Nanami, ở lại chơi thêm chút nha?',
+      'Hết giờ rồi TNhunn.',
+      'TNhunn bao trà sữa...',
+      '...Thôi được, thêm 30 phút 🧋',
     ],
   },
   {
     pair: ['TNhunn', 'Kakashi'],
     lines: [
-      'Kakashi, sao lại đi muộn?',
-      'Dạ có bà cụ cần qua đường...',
-      'Lý do này sếp nghe 10 lần rồi 🙄',
+      'Kakashi, sao lại tới muộn?',
+      'Có bà cụ cần qua đường...',
+      'Lý do này TNhunn nghe 10 lần rồi 🙄',
     ],
   },
   {
     pair: ['TNhunn', 'Naruto'],
     lines: [
       'Naruto, hôm nay năng lượng ghê',
-      'Em sẽ trở thành sếp, dattebayo!',
-      'Haha, cố lên, ghế này còn lâu 😏',
+      'Em sẽ giỏi như TNhunn, dattebayo!',
+      'Haha, TNhunn chờ đó 😏',
     ],
   },
 ];
@@ -317,12 +316,12 @@ const BY_PLACE: Record<ChatPlace, readonly Script[]> = {
 
 /** What two characters talk about here, and the name of whoever opens (null: either).
  *  On the way somewhere it's always a quick hello; elsewhere storyline pairs
- *  have their own chats, and the boss talks shop (or games, in the game room). */
+ *  have their own chats, and TNhunn chats with the crew (or games, in the game room). */
 export function pickDialogue(
   nameA: string | null,
   nameB: string | null,
   place: ChatPlace,
-  bossName: string,
+  ownerName: string,
 ): { lines: Script; opener: string | null } {
   if (place === 'street') return { lines: randomOf(STREET), opener: null };
   const special = PAIR.find(
@@ -330,8 +329,8 @@ export function pickDialogue(
       (pair[0] === nameA && pair[1] === nameB) || (pair[0] === nameB && pair[1] === nameA),
   );
   if (special && Math.random() < 0.6) return { lines: special.lines, opener: special.pair[0] };
-  if (nameA === bossName || nameB === bossName) {
-    return { lines: randomOf(place === 'game' ? BOSS_GAME : BOSS), opener: bossName };
+  if (nameA === ownerName || nameB === ownerName) {
+    return { lines: randomOf(place === 'game' ? OWNER_GAME : OWNER), opener: ownerName };
   }
   return { lines: randomOf(BY_PLACE[place]), opener: null };
 }

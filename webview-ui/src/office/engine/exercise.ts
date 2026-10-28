@@ -21,7 +21,7 @@ export interface ExerciseSession {
   /** Seconds into the current phase. */
   timer: number;
   members: Character[];
-  /** The boss, out in front of the line calling the moves (null: not here). */
+  /** TNhunn (the owner), out in front of the line calling the moves (null: not here). */
   coach: Character | null;
   /** Seconds until the next round of calls / replies. */
   chatTimer: number;
@@ -30,7 +30,7 @@ export interface ExerciseSession {
 /** Seconds each round of calls and replies stays up. */
 const EXERCISE_CHAT_SEC = 4;
 
-/** Speech during the break: the coach calls (or, with no boss here, whoever
+/** Speech during the break: the coach calls (or, with TNhunn not here, whoever
  *  leads the line) and one or two others answer now and then. */
 export function updateExerciseChatter(ex: ExerciseSession, dt: number): void {
   ex.chatTimer -= dt;

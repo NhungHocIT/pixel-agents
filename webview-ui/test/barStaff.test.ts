@@ -1,5 +1,5 @@
 /**
- * Bar staff: the boss (the user's avatar) and the waiter keep their own skins,
+ * TNhunn (the user's avatar) and the waiter keep their own skins,
  * and the waiter carries drinks to whoever is seated.
  *
  * Run with: npm test
@@ -15,7 +15,7 @@ import { setCharacterTemplates } from '../src/office/sprites/spriteData.js';
 import type { SpriteData } from '../src/office/types.js';
 import { CharacterState } from '../src/office/types.js';
 
-const BOSS = CHARACTER_NAMES.indexOf(USER_AVATAR_NAME);
+const OWNER = CHARACTER_NAMES.indexOf(USER_AVATAR_NAME);
 const WAITER = CHARACTER_NAMES.indexOf(WAITER_NAME);
 
 function loadCast(): void {
@@ -26,13 +26,13 @@ function loadCast(): void {
 
 afterEach(() => setCharacterTemplates([]));
 
-test('agents never get the boss or waiter skin', () => {
+test('agents never get the TNhunn or waiter skin', () => {
   loadCast();
   const office = new OfficeState();
   for (let id = 1; id <= 30; id++) office.addAgent(id);
-  office.addAgent(99, BOSS); // a saved seat from before
+  office.addAgent(99, OWNER); // a saved seat from before
   for (const ch of office.characters.values()) {
-    assert.notEqual(ch.palette, BOSS);
+    assert.notEqual(ch.palette, OWNER);
     assert.notEqual(ch.palette, WAITER);
   }
 });
