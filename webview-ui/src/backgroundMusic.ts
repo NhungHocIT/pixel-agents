@@ -1,8 +1,7 @@
 /**
  * Background music for what's going on in the office: a hidden YouTube player
  * (the official IFrame API) plays the scene's tracks on loop — League music
- * while TNhunn plays LoL, the pickleball song during a game — and pauses when
- * nothing is on. Each scene picks up where it left off. Respects the sound
+ * while TNhunn plays LoL — and pauses when nothing is on. Each scene picks up where it left off. Respects the sound
  * setting. Nothing loads until music is first wanted.
  */
 import type { MusicScene } from './constants.js';

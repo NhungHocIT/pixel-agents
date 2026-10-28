@@ -10,7 +10,6 @@ import type { MusicScene } from '../constants.js';
 
 const LABEL: Record<MusicScene, string> = {
   lol: 'LoL',
-  pickleball: 'Pickleball',
 };
 
 /** Music volume, shown only while background music plays (bottom-left,

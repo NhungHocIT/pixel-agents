@@ -185,11 +185,10 @@ export const PICKLEBALL_BALL_COLOR = '#DDF23A';
 export const PICKLEBALL_BALL_RIM_COLOR = '#9DB020';
 export const PICKLEBALL_SHADOW_COLOR = '#00000055';
 /** Background music, by what's going on (YouTube video ids, played in order on
- *  loop): League while TNhunn plays LoL, the pickleball song during a game. */
-export type MusicScene = 'lol' | 'pickleball';
+ *  loop): League while TNhunn plays LoL. */
+export type MusicScene = 'lol';
 export const MUSIC_TRACKS: Record<MusicScene, readonly string[]> = {
   lol: ['r6zIGXun57U', 'C3GouGa0noM', 'UOxkGD8qRB4', 'fB8TyLTD7EE'],
-  pickleball: ['IzSYlr3VI1A'],
 };
 /** Background music volume (0-100). */
 export const BACKGROUND_MUSIC_VOLUME = 40;

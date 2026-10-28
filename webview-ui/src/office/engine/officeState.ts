@@ -2447,13 +2447,10 @@ export class OfficeState {
   }
 
   /** Which background music fits now: League while TNhunn is at a PC playing
-   *  LoL, else the pickleball song while a game is on (players heading to the
-   *  court count), else none. */
+   *  LoL, else none. */
   musicScene(): MusicScene | null {
     const owner = this.getVisiblePatrons().find((p) => this.isUserAvatar(p));
-    if (owner?.state === CharacterState.GAME && this.userInLeague()) return 'lol';
-    if (this.pickleball) return 'pickleball';
-    return null;
+    return owner?.state === CharacterState.GAME && this.userInLeague() ? 'lol' : null;
   }
 
   /** What the canvas draws: `getCharacters()` plus the bar patrons. Kept apart
