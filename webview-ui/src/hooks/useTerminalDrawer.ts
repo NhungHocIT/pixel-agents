@@ -3,7 +3,7 @@ import { useCallback, useEffect, useRef, useState } from 'react';
 
 import type { AgentActivity, AgentAppearance, TabStatus } from '../components/AgentCard.js';
 import {
-  TERMINAL_DRAWER_DEFAULT_HEIGHT_PX,
+  TERMINAL_DRAWER_DEFAULT_HEIGHT_RATIO,
   TERMINAL_DRAWER_MAX_HEIGHT_RATIO,
   TERMINAL_DRAWER_MIN_HEIGHT_PX,
   TERMINAL_OFFICE_MIN_HEIGHT_PX,
@@ -89,14 +89,19 @@ export function useTerminalDrawer({
   // The height the user asked for; what renders is that clamped to the
   // viewport, re-derived on every window resize so a window that shrinks
   // while the drawer is open never pushes the office (and its agents) out.
-  const [preferredHeightPx, setPreferredHeightPx] = useState(TERMINAL_DRAWER_DEFAULT_HEIGHT_PX);
+  // Null until the user drags: the panel then keeps an even split with the
+  // office as the window resizes.
+  const [preferredHeightPx, setPreferredHeightPx] = useState<number | null>(null);
   const [viewportPx, setViewportPx] = useState(() => window.innerHeight);
   useEffect(() => {
     const onResize = () => setViewportPx(window.innerHeight);
     window.addEventListener('resize', onResize);
     return () => window.removeEventListener('resize', onResize);
   }, []);
-  const heightPx = clampDrawerHeight(preferredHeightPx, viewportPx);
+  const heightPx = clampDrawerHeight(
+    preferredHeightPx ?? viewportPx * TERMINAL_DRAWER_DEFAULT_HEIGHT_RATIO,
+    viewportPx,
+  );
   const [connStatuses, setConnStatuses] = useState<Record<number, TerminalConnectionStatus>>({});
 
   const shownAgentId =
