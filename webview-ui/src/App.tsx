@@ -11,6 +11,7 @@ import { EditActionBar } from './components/EditActionBar.js';
 import { IntroBubble } from './components/IntroBubble.js';
 import { MigrationNotice } from './components/MigrationNotice.js';
 import { SettingsModal } from './components/SettingsModal.js';
+import type { TerminalView } from './components/TerminalDrawer.js';
 import { TerminalDrawer } from './components/TerminalDrawer.js';
 import { Tooltip } from './components/Tooltip.js';
 import { Button } from './components/ui/Button.js';
@@ -122,7 +123,20 @@ function App() {
     terminalAvailable,
     terminalUnavailableReason,
     terminalAgentIds,
+    shellAgentIds,
   } = useExtensionMessages(getOfficeState, editor.setLastSavedLayout, isEditDirty);
+
+  // Drawer tabs: every agent with a terminal of either kind — its Claude PTY,
+  // its shell (cmd), or both. An adopted agent with only a shell gets a tab too.
+  const drawerAgentIds = useMemo(
+    () => [...terminalAgentIds, ...shellAgentIds.filter((id) => !terminalAgentIds.includes(id))],
+    [terminalAgentIds, shellAgentIds],
+  );
+  /** Which terminal each agent's tab shows; an agent with only one kind shows that one. */
+  const [terminalViews, setTerminalViews] = useState<Record<number, TerminalView>>({});
+  const setTerminalView = useCallback((agentId: number, view: TerminalView) => {
+    setTerminalViews((prev) => ({ ...prev, [agentId]: view }));
+  }, []);
 
   // Show migration notice once layout reset is detected
   const [migrationNoticeDismissed, setMigrationNoticeDismissed] = useState(false);
@@ -155,7 +169,7 @@ function App() {
   // active tab on both shells; the desktop-only bits (isOpen, width, resize)
   // are simply unread on mobile, where the sliding track plays the drawer.
   const terminalDrawer = useTerminalDrawer({
-    terminalAgentIds,
+    terminalAgentIds: drawerAgentIds,
     getOfficeState,
     agentTools,
     agentStatuses,
@@ -332,6 +346,18 @@ function App() {
     transport.send({ type: 'closeAgent', id });
   }, []);
 
+  // Open the agent's shell (cmd) — or switch to it if it's already running —
+  // and show it in the drawer. The tab appears once the server announces it.
+  const { select: selectDrawerAgent } = terminalDrawer;
+  const handleOpenShell = useCallback(
+    (id: number) => {
+      transport.send({ type: 'openShell', id });
+      setTerminalView(id, 'shell');
+      selectDrawerAgent(id);
+    },
+    [setTerminalView, selectDrawerAgent],
+  );
+
   const { reveal: revealTerminal } = terminalDrawer;
   const { showTerminal: showMobileTerminal } = mobileShell;
   const handleClick = useCallback(
@@ -347,13 +373,13 @@ function App() {
       // one (VS Code resolves the same way server-side).
       const leadId = os.characters.get(focusId)?.leadAgentId;
       const terminalId =
-        leadId !== undefined && !terminalAgentIds.includes(focusId) ? leadId : focusId;
-      if (terminalAgentIds.includes(terminalId)) {
+        leadId !== undefined && !drawerAgentIds.includes(focusId) ? leadId : focusId;
+      if (drawerAgentIds.includes(terminalId)) {
         revealTerminal(terminalId);
         if (isMobile) showMobileTerminal();
       }
     },
-    [terminalAgentIds, isMobile, revealTerminal, showMobileTerminal],
+    [drawerAgentIds, isMobile, revealTerminal, showMobileTerminal],
   );
 
   // Card click when there is no terminal pane to switch (VS Code, or a
@@ -588,6 +614,7 @@ function App() {
             zoom={editor.zoom}
             panRef={editor.panRef}
             onCloseAgent={handleCloseAgent}
+            onOpenShell={terminalAvailable ? handleOpenShell : undefined}
             alwaysShowOverlay={alwaysShowOverlay}
           />
         </>
@@ -744,7 +771,12 @@ function App() {
               click raising the agent's editor terminal where there is one. */}
           {terminalAvailable ? (
             <TerminalDrawer
-              agentIds={terminalAgentIds}
+              agentIds={drawerAgentIds}
+              claudeAgentIds={terminalAgentIds}
+              shellAgentIds={shellAgentIds}
+              viewFor={(id) => terminalViews[id] ?? 'claude'}
+              onSelectView={setTerminalView}
+              onOpenShell={handleOpenShell}
               shownAgentId={terminalDrawer.shownAgentId}
               onSelectAgent={terminalDrawer.select}
               onCloseAgent={handleCloseAgent}

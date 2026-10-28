@@ -25,6 +25,7 @@ import type { ConsentEffects } from './providers/hook/consentExecutor.js';
 import { applyConsentChoice } from './providers/hook/consentExecutor.js';
 import { hooksConsentRequest } from './providers/hook/consentGate.js';
 import { claudeProvider, hookProviderById, hookProviders } from './providers/index.js';
+import { closeAgentShell, hasAgentShell, openAgentShell } from './terminal/agentShell.js';
 import type { PtySessionManager } from './terminal/ptySessionManager.js';
 import { launchStandaloneAgent } from './terminal/standaloneAgentLauncher.js';
 
@@ -171,8 +172,17 @@ export function handleClientMessage(
         // PTY-backed agents; do it here too so external agents (and a PTY that
         // never exits) are still removed promptly.
         ctx.ptyManager?.dispose(id);
+        if (ctx.ptyManager) closeAgentShell(ctx.ptyManager, id);
         runtime.closeAgent(id);
       }
+      break;
+    }
+
+    case 'openShell': {
+      // A plain shell beside the agent (cmd.exe on Windows) in its working
+      // directory. Privileged like launchAgent: it is a shell as the operator.
+      if (!ctx.ptyManager) break;
+      openAgentShell({ store, ptyManager: ctx.ptyManager }, msg.id as number);
       break;
     }
 
@@ -636,6 +646,9 @@ function handleWebviewReady(send: WsSend, ctx: ClientMessageContext): void {
     for (const id of agentIds) {
       if (ctx.ptyManager.has(id)) {
         send({ type: 'terminalSessionOpened', agentId: id });
+      }
+      if (hasAgentShell(ctx.ptyManager, id)) {
+        send({ type: 'shellSessionOpened', agentId: id });
       }
     }
   }

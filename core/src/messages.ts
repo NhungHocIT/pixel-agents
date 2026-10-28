@@ -46,6 +46,8 @@ export type ServerMessage =
   | TerminalAvailability
   | TerminalSessionOpened
   | TerminalSessionClosed
+  | ShellSessionOpened
+  | ShellSessionClosed
   | AgentDiagnostics;
 
 export type ClientMessage =
@@ -53,6 +55,7 @@ export type ClientMessage =
   | LaunchAgent
   | FocusAgent
   | CloseAgent
+  | OpenShell
   | SaveAgentSeats
   | SaveLayout
   | SetSoundEnabled
@@ -371,6 +374,16 @@ export interface TerminalSessionClosed {
   exitCode?: number;
 }
 
+export interface ShellSessionOpened {
+  type: 'shellSessionOpened';
+  agentId: number;
+}
+
+export interface ShellSessionClosed {
+  type: 'shellSessionClosed';
+  agentId: number;
+}
+
 export interface AgentDiagnostics {
   type: 'agentDiagnostics';
   agents: Record<string, any>[];
@@ -392,6 +405,11 @@ export interface FocusAgent {
 
 export interface CloseAgent {
   type: 'closeAgent';
+  id: number;
+}
+
+export interface OpenShell {
+  type: 'openShell';
   id: number;
 }
 

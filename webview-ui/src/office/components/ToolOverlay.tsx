@@ -69,6 +69,9 @@ interface ToolOverlayProps {
   zoom: number;
   panRef: React.RefObject<{ x: number; y: number }>;
   onCloseAgent: (id: number) => void;
+  /** Open a cmd shell in the agent's working directory (standalone with a
+   *  working terminal only; absent hides the button). */
+  onOpenShell?: (id: number) => void;
   alwaysShowOverlay: boolean;
 }
 
@@ -142,6 +145,7 @@ export function ToolOverlay({
   zoom,
   panRef,
   onCloseAgent,
+  onOpenShell,
   alwaysShowOverlay,
 }: ToolOverlayProps) {
   const [, setTick] = useState(0);
@@ -357,6 +361,20 @@ export function ToolOverlay({
                     </span>
                   )}
                 </div>
+                {isSelected && !isSub && onOpenShell && (
+                  <Button
+                    variant="ghost"
+                    size="icon"
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      onOpenShell(id);
+                    }}
+                    title="Open cmd in this agent's folder"
+                    className="ml-2 shrink-0 leading-none"
+                  >
+                    {'›_'}
+                  </Button>
+                )}
                 {isSelected && !isSub && (
                   <Button
                     variant="ghost"

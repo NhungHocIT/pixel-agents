@@ -9,6 +9,9 @@ export interface AgentState {
   isExternal: boolean;
   projectDir: string;
   jsonlFile: string;
+  /** Working directory, when this server launched the agent (its shell opens
+   *  there). Adopted agents' cwd is read from their transcript instead. */
+  cwd?: string;
   fileOffset: number;
   lineBuffer: string;
   activeToolIds: Set<string>;

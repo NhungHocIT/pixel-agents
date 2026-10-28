@@ -157,6 +157,8 @@ interface ExtensionMessageState {
   terminalUnavailableReason: string | null;
   /** Agent ids with a live server-side PTY, in the order they opened. */
   terminalAgentIds: number[];
+  /** Agent ids with a live shell (cmd) terminal beside them, in the order they opened. */
+  shellAgentIds: number[];
 }
 
 /** Drop one key from a keyed-by-agent record without touching identity when
@@ -226,6 +228,8 @@ export function useExtensionMessages(
   const [terminalUnavailableReason, setTerminalUnavailableReason] = useState<string | null>(null);
   /** Agent ids with a live PTY, in the order their terminals opened. */
   const [terminalAgentIds, setTerminalAgentIds] = useState<number[]>([]);
+  /** Agent ids with a live shell terminal, in the order they opened. */
+  const [shellAgentIds, setShellAgentIds] = useState<number[]>([]);
 
   // The renderer keeps its own module-level copy (read every rAF frame), so both
   // sources of truth move together — the persisted value on settingsLoaded and
@@ -328,6 +332,19 @@ export function useExtensionMessages(
         return;
       }
 
+      // Same shape for the agent's shell (cmd) terminal
+      if (msg.type === 'shellSessionOpened') {
+        const agentId = msg.agentId as number;
+        setShellAgentIds((prev) => (prev.includes(agentId) ? prev : [...prev, agentId]));
+        return;
+      }
+
+      if (msg.type === 'shellSessionClosed') {
+        const agentId = msg.agentId as number;
+        setShellAgentIds((prev) => prev.filter((id) => id !== agentId));
+        return;
+      }
+
       if (msg.type === 'layoutLoaded') {
         // Skip external layout updates while editor has unsaved changes
         if (layoutReadyRef.current && isEditDirty?.()) {
@@ -411,6 +428,7 @@ export function useExtensionMessages(
         // an agent can be removed without its PTY ever reporting an exit (e.g.
         // stale cleanup), and a tab for a gone agent would attach to nothing.
         setTerminalAgentIds((prev) => prev.filter((a) => a !== id));
+        setShellAgentIds((prev) => prev.filter((a) => a !== id));
         setAgentTools((prev) => omitKey(prev, id));
         setAgentStatuses((prev) => omitKey(prev, id));
         setAgentAwaitingInput((prev) => omitKey(prev, id));
@@ -936,5 +954,6 @@ export function useExtensionMessages(
     terminalAvailable,
     terminalUnavailableReason,
     terminalAgentIds,
+    shellAgentIds,
   };
 }

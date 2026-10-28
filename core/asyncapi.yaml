@@ -125,6 +125,8 @@ components:
         - $ref: '#/components/schemas/TerminalAvailability'
         - $ref: '#/components/schemas/TerminalSessionOpened'
         - $ref: '#/components/schemas/TerminalSessionClosed'
+        - $ref: '#/components/schemas/ShellSessionOpened'
+        - $ref: '#/components/schemas/ShellSessionClosed'
         # Diagnostics
         - $ref: '#/components/schemas/AgentDiagnostics'
       discriminator: type
@@ -135,6 +137,7 @@ components:
         - $ref: '#/components/schemas/LaunchAgent'
         - $ref: '#/components/schemas/FocusAgent'
         - $ref: '#/components/schemas/CloseAgent'
+        - $ref: '#/components/schemas/OpenShell'
         - $ref: '#/components/schemas/SaveAgentSeats'
         - $ref: '#/components/schemas/SaveLayout'
         - $ref: '#/components/schemas/SetSoundEnabled'
@@ -967,6 +970,31 @@ components:
         exitCode:
           type: integer
 
+    ShellSessionOpened:
+      description: >-
+        A plain shell terminal (cmd.exe on Windows) now exists for this agent; the
+        client may attach to GET /terminal/:id with id = agentId + SHELL_TERMINAL_ID_OFFSET.
+        Re-sent on webviewReady for every live shell.
+      type: object
+      additionalProperties: false
+      required: [type, agentId]
+      properties:
+        type:
+          const: shellSessionOpened
+        agentId:
+          type: integer
+
+    ShellSessionClosed:
+      description: The agent's shell exited (or was closed with the agent); it is no longer attachable.
+      type: object
+      additionalProperties: false
+      required: [type, agentId]
+      properties:
+        type:
+          const: shellSessionClosed
+        agentId:
+          type: integer
+
     # ── Client message variants ────────────────────────────────────
 
     WebviewReady:
@@ -998,6 +1026,19 @@ components:
       properties:
         type:
           const: focusAgent
+        id:
+          type: integer
+
+    OpenShell:
+      description: >-
+        Open (or re-announce) a plain shell terminal in the agent's working directory,
+        beside its Claude terminal. Standalone only.
+      type: object
+      additionalProperties: false
+      required: [type, id]
+      properties:
+        type:
+          const: openShell
         id:
           type: integer
 

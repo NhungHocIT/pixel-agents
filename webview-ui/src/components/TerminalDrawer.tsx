@@ -1,5 +1,6 @@
 import type { MouseEvent as ReactMouseEvent } from 'react';
 
+import { shellTerminalId } from '../../../core/src/constants.js';
 import { TERMINAL_DRAWER_RESIZE_HANDLE_PX } from '../constants.js';
 import type { TerminalConnectionStatus } from '../terminal/terminalClient.js';
 import type { AgentAppearance, TabStatus } from './AgentCard.js';
@@ -7,9 +8,21 @@ import { AgentCardBar } from './AgentCardBar.js';
 import { TerminalPaneStack } from './TerminalPaneStack.js';
 import { Button } from './ui/Button.js';
 
+/** Which of an agent's terminals its tab shows: Claude, or the shell (cmd) beside it. */
+export type TerminalView = 'claude' | 'shell';
+
 interface TerminalDrawerProps {
-  /** Agent ids with a live PTY, in open order. */
+  /** Agent ids with a terminal of either kind, in open order (the cards). */
   agentIds: number[];
+  /** Agent ids with a live Claude PTY. */
+  claudeAgentIds: number[];
+  /** Agent ids with a live shell (cmd) terminal. */
+  shellAgentIds: number[];
+  /** The view the user picked for an agent (default 'claude'). */
+  viewFor: (agentId: number) => TerminalView;
+  onSelectView: (agentId: number, view: TerminalView) => void;
+  /** Start the agent's shell (the cmd tab with no shell yet). */
+  onOpenShell: (agentId: number) => void;
   /** The pane showing (useTerminalDrawer's resolution); its card is the active tab. */
   shownAgentId: number | null;
   onSelectAgent: (agentId: number) => void;
@@ -30,7 +43,8 @@ interface TerminalDrawerProps {
 }
 
 /**
- * Right-docked panel hosting one xterm tab per launched agent.
+ * Right-docked panel hosting each agent's terminals: its Claude terminal and,
+ * on demand, a plain shell (cmd) in the same working directory.
  *
  * Standalone only — App gates rendering on terminalAvailable, which the server
  * only ever reports over the WebSocket transport. VS Code keeps using its own
@@ -39,11 +53,15 @@ interface TerminalDrawerProps {
  * The agent-card bar (AgentCardBar, shared with VS Code) is drawn on top of
  * the office space at its right edge at all times; the terminal panel opens to
  * the bar's right. Here the cards double as tabs — clicking one selects that
- * agent's pane — so the panel itself is pure terminal with no chrome of its own
- * beyond the resize handle and a floating close button.
+ * agent — and a Claude | cmd switch on top picks which of its terminals shows.
  */
 export function TerminalDrawer({
   agentIds,
+  claudeAgentIds,
+  shellAgentIds,
+  viewFor,
+  onSelectView,
+  onOpenShell,
   shownAgentId,
   onSelectAgent,
   onCloseAgent,
@@ -56,6 +74,37 @@ export function TerminalDrawer({
   onStatusChange,
 }: TerminalDrawerProps) {
   if (agentIds.length === 0) return null;
+
+  const hasClaude = shownAgentId !== null && claudeAgentIds.includes(shownAgentId);
+  const hasShell = shownAgentId !== null && shellAgentIds.includes(shownAgentId);
+  // An agent with only a shell (an adopted session) shows that
+  const view: TerminalView =
+    shownAgentId === null ? 'claude' : hasClaude ? viewFor(shownAgentId) : 'shell';
+  // The pane on screen: the Claude PTY, or the shell's own session id. While a
+  // just-requested shell is starting, nothing shows until the server announces it.
+  let shownPaneId: number | null = null;
+  if (shownAgentId !== null) {
+    if (view === 'claude') shownPaneId = shownAgentId;
+    else if (hasShell) shownPaneId = shellTerminalId(shownAgentId);
+  }
+  const paneIds = [...claudeAgentIds, ...shellAgentIds.map(shellTerminalId)];
+
+  const pickView = (next: TerminalView) => {
+    if (shownAgentId === null) return;
+    onSelectView(shownAgentId, next);
+    if (next === 'shell' && !hasShell) onOpenShell(shownAgentId);
+  };
+  const tab = (label: string, target: TerminalView, enabled: boolean, title: string) => (
+    <Button
+      variant={!enabled ? 'disabled' : view === target ? 'active' : 'ghost'}
+      size="sm"
+      disabled={!enabled}
+      onClick={() => pickView(target)}
+      title={title}
+    >
+      {label}
+    </Button>
+  );
 
   return (
     <div className="h-full shrink-0 flex">
@@ -88,15 +137,15 @@ export function TerminalDrawer({
           title="Drag to resize"
         />
 
-        {/* Close the panel. Floats over the pane's top-right corner so the
-            panel needs no header bar of its own — ghost keeps it invisible
-            over terminal content until hovered. */}
-        <div className="absolute top-4 right-4 z-50">
+        {/* Which of the agent's terminals shows, and closing the panel. */}
+        <div className="flex items-center gap-4 pl-8 pr-4 pt-4 shrink-0">
+          {tab('Claude', 'claude', hasClaude, 'Claude terminal')}
+          {tab('cmd', 'shell', true, "cmd in the agent's working directory")}
           <Button
             variant="ghost"
             size="icon"
             onClick={onClosePanel}
-            className="hover:bg-btn-hover"
+            className="ml-auto hover:bg-btn-hover"
             title="Close terminal"
           >
             {'>'}
@@ -104,10 +153,18 @@ export function TerminalDrawer({
         </div>
 
         <div className="relative flex-1 min-h-0 p-4">
+          {shownPaneId === null && (
+            <div className="absolute inset-4 flex items-center justify-center text-sm text-text-muted">
+              Opening cmd…
+            </div>
+          )}
           <TerminalPaneStack
-            agentIds={agentIds}
-            shownAgentId={shownAgentId}
-            onStatusChange={onStatusChange}
+            agentIds={paneIds}
+            shownAgentId={shownPaneId}
+            onStatusChange={(id, status) => {
+              // Card dots follow the agent's Claude socket; shells report under their own id
+              if (claudeAgentIds.includes(id)) onStatusChange(id, status);
+            }}
             paneClassName="inset-4"
           />
         </div>

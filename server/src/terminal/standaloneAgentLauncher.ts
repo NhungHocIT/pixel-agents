@@ -25,6 +25,7 @@ import { startFileWatching } from '../fileWatcher.js';
 import { directoryNameFor, hostDirectory } from '../hostDirectory.js';
 import { assignPaletteIfNeeded } from '../paletteAssigner.js';
 import type { AgentState } from '../types.js';
+import { closeAgentShell } from './agentShell.js';
 import type { PtySessionManager } from './ptySessionManager.js';
 
 export interface LaunchStandaloneAgentDeps {
@@ -111,6 +112,7 @@ export function launchStandaloneAgent(
     // restore paths act on -- a PTY agent must be excluded from both.
     isExternal: false,
     projectDir,
+    cwd,
     jsonlFile: expectedFile,
     // The character's origin label (and its Area-mapping key): the name of the
     // Directory it was launched into, as the user named it — so an entry called
@@ -145,6 +147,7 @@ export function launchStandaloneAgent(
   session.onExit((exit) => {
     console.log(`[Pixel Agents] Terminal: Agent ${id} - exited (code ${exit.exitCode})`);
     store.broadcast({ type: 'terminalSessionClosed', agentId: id, exitCode: exit.exitCode });
+    closeAgentShell(ptyManager, id); // the agent is gone; its shell goes with it
     if (store.has(id)) {
       runtime.unregisterAgent(agent.sessionId);
       runtime.closeAgent(id);

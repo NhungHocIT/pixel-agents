@@ -28,6 +28,15 @@ export const TASK_DESCRIPTION_DISPLAY_MAX_LENGTH = 40;
  *  handshake carries the server token as `?token=`, exactly like `/ws` (see
  *  server/src/wsAuth.ts); the frame shapes are in terminalFrames.ts. */
 export const TERMINAL_WS_PREFIX = '/terminal';
+/** Each agent can have a plain shell (cmd.exe on Windows) beside its Claude
+ *  terminal. It is a PTY session like any other, keyed agentId + this offset,
+ *  so it attaches over the same /terminal/:id route. Agent ids stay far below. */
+export const SHELL_TERMINAL_ID_OFFSET = 1_000_000;
+
+/** The PTY session id of an agent's shell terminal. */
+export function shellTerminalId(agentId: number): number {
+  return agentId + SHELL_TERMINAL_ID_OFFSET;
+}
 
 // ── Transport ────────────────────────────────────────────────
 // Connection-state names for the MessageTransport state machine.
