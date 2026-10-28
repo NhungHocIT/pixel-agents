@@ -64,31 +64,16 @@ function runInvite(accepted: boolean): BarChat[] {
   const a = patron(1, 5);
   const b = patron(2, 6);
   const done: BarChat[] = [];
-  const invite = () => ({ to: 'beer' as const, accepted });
-  let chats = updateChats(
-    [],
-    [a, b],
-    () => null,
-    0,
-    undefined,
-    undefined,
-    invite,
-    (c) => done.push(c),
-  );
+  const hooks = {
+    inviteOf: () => ({ to: 'beer' as const, accepted }),
+    onAccepted: (c: BarChat) => done.push(c),
+  };
+  let chats = updateChats([], [a, b], () => null, 0, hooks);
   assert.equal(chats.length, 1);
   assert.equal(chats[0].speakers[0], a, 'the one asking speaks first');
   // Small steps: a big one could also run out the after-chat cooldown and start a second invite
   for (let i = 0; i < 60 && chats.length > 0; i++) {
-    chats = updateChats(
-      chats,
-      [a, b],
-      () => null,
-      1,
-      undefined,
-      undefined,
-      invite,
-      (c) => done.push(c),
-    );
+    chats = updateChats(chats, [a, b], () => null, 1, hooks);
   }
   return done;
 }

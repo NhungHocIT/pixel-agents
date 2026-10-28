@@ -3,6 +3,7 @@
  * Chats alternate: first speaker, second speaker, first, ...
  *
  *   BAR      — sitting or standing in the bar (drinks, food, work talk)
+ *   TABLE    — drinking beer together at one table (toasts, rounds, life talk)
  *   GAME     — in the game room / at a gaming PC
  *   SOFA     — on the lounge sofa
  *   STREET   — two people bumping into each other on the way somewhere
@@ -15,7 +16,7 @@
  *   WAITER   — the waiter at a customer's table, bar or game room
  */
 
-export type ChatPlace = 'bar' | 'game' | 'sofa' | 'street';
+export type ChatPlace = 'bar' | 'table' | 'game' | 'sofa' | 'street';
 
 type Script = readonly string[];
 
@@ -366,12 +367,36 @@ export function inviteDialogue(to: InviteTo, accepted: boolean): Script {
   return randomOf((accepted ? INVITE_YES : INVITE_NO)[to]);
 }
 
+// ── Ngồi nhậu cùng bàn ───────────────────────────────────────
+const TABLE: readonly Script[] = [
+  ['Nào, cạn ly! 🍻', 'Một, hai, ba, dô!', 'Dô!!'],
+  ['Ly này tui mời nha', 'Ngại quá, để ly sau tui mời lại', 'Ok, chốt!'],
+  ['Nay sao trầm vậy?', 'Code chạy được mà không biết vì sao 😶', 'Thôi uống đi, đừng nghĩ nữa 🍺'],
+  ['Trăm phần trăm nha!', 'Thôi 50 thôi, mai còn đi làm', 'Yếu vậy 😏'],
+  ['Bia này mát ghê', 'Ướp lạnh chuẩn luôn', 'Gọi thêm thùng nữa đi!'],
+  ['Tèo ơi, thêm 2 chai!', 'Để tui gọi đá luôn', 'Có mồi chưa? Thêm đĩa lạc 🥜'],
+  ['Sếp nay khen tui đó', 'Thiệt hả? Khen gì?', 'Khen tui… về sớm 😂', 'Uống ly này cho quên đi'],
+  ['Kể nghe vụ deploy tối qua coi', 'Đừng nhắc, rollback 3 lần 😭', 'Cạn ly chia buồn! 🍻'],
+  ['Tháng này lương về chưa?', 'Về rồi, mà bay hết rồi 💸', 'Thôi nay tui bao!'],
+  [
+    'Hồi xưa tụi mình mới vào công ty…',
+    'Còn ngồi chung bàn với nhau',
+    'Giờ vẫn ngồi chung bàn nhậu 😂',
+  ],
+  ['Ê, uống chậm thôi', 'Tửu lượng tui cao lắm', 'Câu đó lần trước nói xong ngủ luôn 😴'],
+  ['Mai cuối tuần rồi!', 'Đi đâu chơi không?', 'Đi đánh pickleball rồi về nhậu tiếp 🏓🍺'],
+  ['Ly này vì bug đã fix!', 'Vì deadline đã qua!', 'Vì cuối tháng có lương! 🍻'],
+  ['Bàn này vui nhất quán luôn', 'Tại có tui đó 😎', 'Thôi uống đi ông 😂'],
+  ['Hết bia rồi kìa', 'Gọi tiếp chứ sao!', 'Hôm nay không say không về 🍺'],
+];
+
 export function randomOf<T>(list: readonly T[]): T {
   return list[Math.floor(Math.random() * list.length)];
 }
 
 const BY_PLACE: Record<ChatPlace, readonly Script[]> = {
   bar: BAR,
+  table: TABLE,
   game: GAME,
   sofa: SOFA,
   street: STREET,

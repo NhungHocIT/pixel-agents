@@ -785,17 +785,35 @@ export class OfficeState {
     return isPatron(ch) && !this.isWaiter(ch) && !this.isUserAvatar(ch);
   }
 
-  /** Now and then a new chat between two patrons is `a` asking `b` along: for a
-   *  beer (a table with two free seats, unless they already drink together),
-   *  to the sofa (unless one is on it), or to play pickleball (the court is
-   *  free). Null: just a chat. */
+  /** Who can go play pickleball: those patrons, and agents with no work on
+   *  (an agent at work stays at its desk). */
+  private canPlay(ch: Character): boolean {
+    if (isPatron(ch)) return this.canBeInvited(ch);
+    return !ch.isSubagent && !ch.isActive && !ch.matrixEffect;
+  }
+
+  /** Both sitting at one table: they drink and talk there, nobody leaves. */
+  private drinkingTogether(a: Character, b: Character): boolean {
+    const table = this.seatedAt(a)?.tableId;
+    return table !== undefined && this.seatedAt(b)?.tableId === table;
+  }
+
+  /** Now and then a new chat is `a` asking `b` along. Patrons: for a beer (a
+   *  table with two free seats), to the sofa (unless one is on it), or to play
+   *  pickleball (the court is free) — idle agents only to pickleball. Never
+   *  between two already drinking at one table. Null: just a chat. */
   private inviteOf(a: Character, b: Character): ChatInvite | null {
-    if (!this.canBeInvited(a) || !this.canBeInvited(b)) return null;
+    const patrons = this.canBeInvited(a) && this.canBeInvited(b);
+    const players = this.canPlay(a) && this.canPlay(b);
+    if (!patrons && !players) return null;
+    if (this.drinkingTogether(a, b)) return null;
     if (Math.random() >= CHAT_INVITE_CHANCE) return null;
     const options: InviteTo[] = [];
-    if (!this.tablemates(a).includes(b) && this.seatsTogether(a, b, 'beer')) options.push('beer');
-    if (!a.onSofa && !b.onSofa && this.seatsTogether(a, b, 'sofa')) options.push('sofa');
-    if (this.court() && !this.pickleball) options.push('pickleball');
+    if (patrons && this.seatsTogether(a, b, 'beer')) options.push('beer');
+    if (patrons && !a.onSofa && !b.onSofa && this.seatsTogether(a, b, 'sofa')) {
+      options.push('sofa');
+    }
+    if (players && this.court() && !this.pickleball) options.push('pickleball');
     if (options.length === 0) return null;
     return { to: randomOf(options), accepted: Math.random() < CHAT_INVITE_ACCEPT_CHANCE };
   }
@@ -834,8 +852,9 @@ export class OfficeState {
     return { col: item.col, row: item.row, w: entry.footprintW, h: entry.footprintH };
   }
 
-  /** Off to the court: whoever is nearer the left side takes it. Both drop
-   *  any seat or bed and are off their schedule until the game ends. */
+  /** Off to the court: whoever is nearer the left side takes it. Both leave
+   *  bed or sofa; a patron also drops its seat and schedule until the game
+   *  ends (an agent keeps its desk). */
   private startPickleballGame(a: Character, b: Character): void {
     const court = this.court();
     if (!court || this.pickleball || this.exercise) return;
@@ -851,8 +870,10 @@ export class OfficeState {
     // No way onto the court from where one of them is: no game
     if (paths.some((p, i) => p.length === 0 && dist(players[i], sides[i]) > 0)) return;
     for (const ch of players) {
-      ch.isActive = false;
-      ch.seatId = null;
+      if (isPatron(ch)) {
+        ch.isActive = false;
+        ch.seatId = null;
+      }
       ch.restSpot = null;
       ch.lostDetours = 0;
       ch.seatTimer = 0;
@@ -863,21 +884,25 @@ export class OfficeState {
     this.pickleball = startPickleball(players, court, paths);
   }
 
-  /** Game over (or called off): both go back to resting, and the ball goes away. */
+  /** Game over (or called off): both go back to resting (an agent with work
+   *  to its desk), and the ball goes away. */
   private endPickleballGame(): void {
     if (!this.pickleball) return;
     endPickleball(this.pickleball);
-    for (const p of this.pickleball.players) sendPatronToRest(p);
+    for (const p of this.pickleball.players) if (isPatron(p)) sendPatronToRest(p);
     this.pickleball = null;
   }
 
   /** The game, and the ball drawn in flight. Called off if a player leaves the
-   *  map (its agent twin showed up) or the court was removed. */
+   *  map (its agent twin showed up, the agent closed), an agent playing gets
+   *  work, or the court was removed. */
   private tickPickleball(dt: number): void {
     const game = this.pickleball;
     if (game) {
       const drawn = new Set(this.getDrawnCharacters());
-      const stillOn = game.players.every((p) => drawn.has(p)) && this.court() !== null;
+      const stillOn =
+        game.players.every((p) => drawn.has(p) && !p.matrixEffect && this.canPlay(p)) &&
+        this.court() !== null;
       if (!stillOn || !updatePickleball(game, dt)) this.endPickleballGame();
     }
     const ball = ballInstances(this.pickleball);
@@ -1009,20 +1034,18 @@ export class OfficeState {
     // Pickleball players have their own calls (tickPickleball)
     const onCourt = new Set(this.pickleball?.players);
     const talkers = [
-      ...[...this.characters.values()].filter((ch) => !ch.matrixEffect),
+      ...[...this.characters.values()].filter((ch) => !ch.matrixEffect && !onCourt.has(ch)),
       ...this.getVisiblePatrons().filter((p) => this.gameTitle(p) === null && !onCourt.has(p)),
     ];
-    // The waiter only talks while serving (see updateWaiter)
-    this.chats = updateChats(
-      this.chats,
-      talkers,
-      characterNameOf,
-      dt,
-      (a, b) => !this.isWaiter(a) && !this.isWaiter(b),
-      (a, b) => this.chatPlace(a, b),
-      (a, b) => this.inviteOf(a, b),
-      (chat) => this.goTogether(chat),
-    );
+    // The waiter only talks while serving (see updateWaiter). Drinking at one
+    // table, they talk to each other across it about the beer.
+    this.chats = updateChats(this.chats, talkers, characterNameOf, dt, {
+      canPair: (a, b) => !this.isWaiter(a) && !this.isWaiter(b),
+      together: (a, b) => this.drinkingTogether(a, b),
+      placeOf: (a, b) => (this.drinkingTogether(a, b) ? 'table' : this.chatPlace(a, b)),
+      inviteOf: (a, b) => this.inviteOf(a, b),
+      onAccepted: (chat) => this.goTogether(chat),
+    });
     const talking = new Set(talkers);
     for (const ch of [...this.characters.values(), ...this.patrons]) {
       if (!talking.has(ch) && !onCourt.has(ch)) ch.speech = null;
@@ -2135,6 +2158,7 @@ export class OfficeState {
 
     if (!this.exercise && Date.now() >= this.nextExerciseAt) this.startExercise();
     const inLine = new Set(this.exercise?.members);
+    const onCourt = new Set(this.pickleball?.players); // moved by tickPickleball
     const held = this.heldForHello();
 
     const toDelete: number[] = [];
@@ -2148,6 +2172,8 @@ export class OfficeState {
       const partner = held.get(ch);
       if (inLine.has(ch)) {
         updateExerciser(ch, dt);
+      } else if (onCourt.has(ch)) {
+        // Playing pickleball: tickPickleball moves it
       } else if (partner) {
         this.holdForHello(ch, partner);
       } else {
@@ -2192,7 +2218,7 @@ export class OfficeState {
         p.restSpot = null;
         continue;
       }
-      if (this.pickleball?.players.includes(p)) continue; // on court: tickPickleball
+      if (onCourt.has(p)) continue; // on court: tickPickleball
       const partner = held.get(p);
       if (inLine.has(p)) updateExerciser(p, dt);
       else if (partner) this.holdForHello(p, partner);

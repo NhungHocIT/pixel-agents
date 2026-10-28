@@ -17,6 +17,7 @@ import {
 } from '../src/constants.js';
 import { updateChats } from '../src/office/engine/barChat.js';
 import { createCharacter } from '../src/office/engine/characters.js';
+import type { Character } from '../src/office/types.js';
 import { CharacterState } from '../src/office/types.js';
 
 function patron(id: number, col: number, row = 18) {
@@ -67,9 +68,28 @@ test('bumping into someone on the way is a quick hello, then a long cooldown', (
 test('the place decides the topic: game room pairs talk games', () => {
   const a = patron(1, 5);
   const b = patron(2, 6);
-  const chats = updateChats([], [a, b], noName, 0, undefined, () => 'game');
+  const chats = updateChats([], [a, b], noName, 0, { placeOf: () => 'game' });
   assert.equal(chats[0].place, 'game');
   assert.ok(chats[0].lines.length >= 2);
+});
+
+test('tablemates talk across the table, first, however far apart the seats are', () => {
+  const a = patron(1, 3);
+  const b = patron(2, 3 + CHAT_KEEP_RANGE_TILES + 1); // the far side of the table
+  const passerby = patron(3, 4);
+  const together = (x: Character, y: Character) => [x, y].every((c) => c === a || c === b);
+  let chats = updateChats([], [a, b, passerby], noName, 0, {
+    together,
+    placeOf: (x, y) => (together(x, y) ? 'table' : 'bar'),
+  });
+  const chat = chats.find((c) => c.speakers.includes(a))!;
+  assert.ok(chat.speakers.includes(b), 'paired with the tablemate, not the nearer passer-by');
+  assert.equal(chat.place, 'table');
+  chats = updateChats(chats, [a, b, passerby], noName, 0.1, { together });
+  assert.ok(
+    chats.some((c) => c === chat),
+    'still talking across the table',
+  );
 });
 
 test('a chat ends when a speaker leaves or they drift apart', () => {

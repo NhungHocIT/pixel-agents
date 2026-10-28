@@ -63,28 +63,45 @@ function tilesApart(a: Character, b: Character): number {
   return Math.abs(a.tileCol - b.tileCol) + Math.abs(a.tileRow - b.tileRow);
 }
 
+/** What OfficeState decides about a pair; every hook is optional. */
+export interface ChatHooks {
+  /** Who may start a chat with whom. */
+  canPair?: (a: Character, b: Character) => boolean;
+  /** Where a new pair is. */
+  placeOf?: (a: Character, b: Character) => ChatPlace;
+  /** Seated at one table: they pair first and talk across it whatever the distance. */
+  together?: (a: Character, b: Character) => boolean;
+  /** May turn a new pair's chat into an invite (`a` asks `b`). */
+  inviteOf?: (a: Character, b: Character) => ChatInvite | null;
+  /** Runs when an accepted invite has been said in full. */
+  onAccepted?: (chat: BarChat) => void;
+}
+
 /** Advance running chats, end those whose speakers left or drifted apart, and
- *  pair up talkers close together (nearest first). Two people where one is
- *  walking only pair when they are right next to each other — that's a
- *  'street' chat. `canPair` limits who may start a chat with whom; `placeOf`
- *  says where a new pair is. `inviteOf` may turn a new pair's chat into an
- *  invite (`a` asks `b`); `onAccepted` runs when an accepted invite has been
- *  said in full. Returns the chats still running. */
+ *  pair up talkers close together (tablemates, then nearest first). Two people
+ *  where one is walking only pair when they are right next to each other —
+ *  that's a 'street' chat. Returns the chats still running. */
 export function updateChats(
   chats: BarChat[],
   talkers: Character[],
   nameOf: (ch: Character) => string | null,
   dt: number,
-  canPair: (a: Character, b: Character) => boolean = () => true,
-  placeOf: (a: Character, b: Character) => ChatPlace = () => 'bar',
-  inviteOf: (a: Character, b: Character) => ChatInvite | null = () => null,
-  onAccepted: (chat: BarChat) => void = () => {},
+  hooks: ChatHooks = {},
 ): BarChat[] {
+  const {
+    canPair = () => true,
+    placeOf = () => 'bar',
+    together = () => false,
+    inviteOf = () => null,
+    onAccepted = () => {},
+  } = hooks;
+  const near = (a: Character, b: Character, range: number) =>
+    together(a, b) || tilesApart(a, b) <= range;
   const present = new Set(talkers);
   const running: BarChat[] = [];
   for (const chat of chats) {
     const [a, b] = chat.speakers;
-    if (!present.has(a) || !present.has(b) || tilesApart(a, b) > CHAT_KEEP_RANGE_TILES) {
+    if (!present.has(a) || !present.has(b) || !near(a, b, CHAT_KEEP_RANGE_TILES)) {
       endChat(chat);
       continue;
     }
@@ -114,13 +131,12 @@ export function updateChats(
   const walking = (ch: Character) => ch.state === CharacterState.WALK;
   while (free.length >= 2) {
     const a = free.shift()!;
-    const b = free
-      .filter((x) => canPair(a, x))
-      .sort((x, y) => tilesApart(x, a) - tilesApart(y, a))[0];
+    const rank = (x: Character) => (together(a, x) ? -1000 : 0) + tilesApart(x, a);
+    const b = free.filter((x) => canPair(a, x)).sort((x, y) => rank(x) - rank(y))[0];
     if (!b) continue;
     const onTheWay = walking(a) || walking(b);
     const range = onTheWay ? CHAT_STREET_RANGE_TILES : CHAT_PAIR_RANGE_TILES;
-    if (tilesApart(b, a) > range) continue;
+    if (!near(a, b, range)) continue;
     free.splice(free.indexOf(b), 1);
     const place = onTheWay ? 'street' : placeOf(a, b);
     const invite = inviteOf(a, b);
