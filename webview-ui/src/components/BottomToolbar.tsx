@@ -20,6 +20,8 @@ interface BottomToolbarProps {
   terminalAvailable: boolean;
   /** Why the terminal is off (shown on the disabled button's tooltip). */
   terminalUnavailableReason: string | null;
+  /** Show the office's own cmd (standalone with a terminal only). */
+  onOpenTerminal?: () => void;
 }
 
 export function BottomToolbar({
@@ -32,6 +34,7 @@ export function BottomToolbar({
   onEditDirectory,
   terminalAvailable,
   terminalUnavailableReason,
+  onOpenTerminal,
 }: BottomToolbarProps) {
   const [isDrawerOpen, setIsDrawerOpen] = useState(false);
   const launchRef = useRef<HTMLDivElement>(null);
@@ -110,6 +113,11 @@ export function BottomToolbar({
             }}
           />
         </div>
+      )}
+      {terminalAvailable && onOpenTerminal && (
+        <Button onClick={onOpenTerminal} title="Open the cmd terminal">
+          cmd
+        </Button>
       )}
       <Button
         variant={isEditMode ? 'active' : 'default'}

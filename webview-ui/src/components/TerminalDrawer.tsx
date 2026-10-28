@@ -1,6 +1,6 @@
 import type { MouseEvent as ReactMouseEvent } from 'react';
 
-import { shellTerminalId } from '../../../core/src/constants.js';
+import { OFFICE_SHELL_ID, shellTerminalId } from '../../../core/src/constants.js';
 import { TERMINAL_DRAWER_RESIZE_HANDLE_PX } from '../constants.js';
 import type { TerminalConnectionStatus } from '../terminal/terminalClient.js';
 import { TerminalPaneStack } from './TerminalPaneStack.js';
@@ -61,6 +61,7 @@ export function TerminalDrawer({
 }: TerminalDrawerProps) {
   if (claudeAgentIds.length === 0 && shellAgentIds.length === 0) return null;
 
+  const isOfficeShell = shownAgentId === OFFICE_SHELL_ID;
   const hasClaude = shownAgentId !== null && claudeAgentIds.includes(shownAgentId);
   const hasShell = shownAgentId !== null && shellAgentIds.includes(shownAgentId);
   // An agent with only a shell (an adopted session) shows that
@@ -111,10 +112,23 @@ export function TerminalDrawer({
         title="Drag to resize"
       />
 
-      {/* Which of the agent's terminals shows, and closing the panel. */}
+      {/* The office's own cmd (no agent), then which of the selected agent's
+          terminals shows, and closing the panel. */}
       <div className="flex items-center gap-4 px-8 pt-8 shrink-0">
-        {tab('Claude', 'claude', hasClaude, 'Claude terminal')}
-        {tab('cmd', 'shell', true, "cmd in the agent's working directory")}
+        <Button
+          variant={isOfficeShell ? 'active' : 'ghost'}
+          size="sm"
+          onClick={() => onOpenShell(OFFICE_SHELL_ID)}
+          title="cmd of its own, not tied to any agent"
+        >
+          Terminal
+        </Button>
+        {!isOfficeShell && shownAgentId !== null && (
+          <>
+            {tab('Claude', 'claude', hasClaude, 'Claude terminal')}
+            {tab('cmd', 'shell', true, "cmd in the agent's working directory")}
+          </>
+        )}
         <Button
           variant="ghost"
           size="icon"

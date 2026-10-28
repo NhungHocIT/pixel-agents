@@ -12,7 +12,7 @@
 import * as fs from 'fs';
 import * as os from 'os';
 
-import { shellTerminalId } from '../../../core/src/constants.js';
+import { OFFICE_SHELL_ID, shellTerminalId } from '../../../core/src/constants.js';
 import type { AgentStateStore } from '../agentStateStore.js';
 import type { AgentState } from '../types.js';
 import type { PtySessionManager } from './ptySessionManager.js';
@@ -64,16 +64,17 @@ function isDirectory(p: string): boolean {
 
 /**
  * Open the agent's shell (or keep the one already running) and announce it.
+ * OFFICE_SHELL_ID opens the office's own shell, in the home directory.
  * Returns false when there is no such agent or no working PTY.
  */
 export function openAgentShell(deps: AgentShellDeps, agentId: number): boolean {
   const { store, ptyManager } = deps;
   const agent = store.get(agentId);
-  if (!agent || !ptyManager.isAvailable()) return false;
+  if ((!agent && agentId !== OFFICE_SHELL_ID) || !ptyManager.isAvailable()) return false;
   const id = shellTerminalId(agentId);
   if (!ptyManager.has(id)) {
     const { command, args } = shellCommand();
-    const cwd = agentCwd(agent);
+    const cwd = agent ? agentCwd(agent) : os.homedir();
     let session;
     try {
       session = ptyManager.create({ agentId: id, command, args, cwd });

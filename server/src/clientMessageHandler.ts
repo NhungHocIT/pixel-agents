@@ -1,4 +1,5 @@
 import type { StateAdapter } from '../../core/src/adapter.js';
+import { OFFICE_SHELL_ID } from '../../core/src/constants.js';
 import type { HookProvider } from '../../core/src/provider.js';
 import { resendAgentActivity } from './agentActivityResend.js';
 import { buildAgentDiagnostics } from './agentDiagnostics.js';
@@ -651,6 +652,9 @@ function handleWebviewReady(send: WsSend, ctx: ClientMessageContext): void {
         send({ type: 'shellSessionOpened', agentId: id });
       }
     }
+    // The office's own cmd: opening the app opens it (or re-announces the
+    // running one) — no agent needed.
+    openAgentShell({ store, ptyManager: ctx.ptyManager }, OFFICE_SHELL_ID);
   }
 }
 

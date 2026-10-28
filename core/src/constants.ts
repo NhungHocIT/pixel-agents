@@ -33,6 +33,11 @@ export const TERMINAL_WS_PREFIX = '/terminal';
  *  so it attaches over the same /terminal/:id route. Agent ids stay far below. */
 export const SHELL_TERMINAL_ID_OFFSET = 1_000_000;
 
+/** The office's own shell: a cmd tied to no agent, open as soon as the app is,
+ *  like VS Code's terminal. Keyed like an agent shell under this id (agent ids
+ *  start at 1, so 0 is never an agent). */
+export const OFFICE_SHELL_ID = 0;
+
 /** The PTY session id of an agent's shell terminal. */
 export function shellTerminalId(agentId: number): number {
   return agentId + SHELL_TERMINAL_ID_OFFSET;
