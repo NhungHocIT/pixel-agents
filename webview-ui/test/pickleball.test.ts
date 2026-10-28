@@ -11,6 +11,7 @@ import { test } from 'vitest';
 
 import { PICKLEBALL_GAME_SEC, PICKLEBALL_GATHER_MAX_SEC } from '../src/constants.js';
 import { createCharacter } from '../src/office/engine/characters.js';
+import { PICKLEBALL } from '../src/office/engine/dialogues.js';
 import {
   ballInstances,
   courtSides,
@@ -61,16 +62,36 @@ test('both walk to their side, face the net and rally until time is up', () => {
 
   // Over the game the ball goes back and forth and the receivers stay on court
   const hitters = new Set<number>();
+  const said = new Map<string, Set<string>>([
+    ['a', new Set()],
+    ['b', new Set()],
+  ]);
   let playing = true;
   for (t = 0; playing && t < PICKLEBALL_GAME_SEC + 10; t += 0.05) {
     playing = updatePickleball(game, 0.05);
     if (game.shot) hitters.add(game.shot.by);
-    for (const ch of [a, b]) {
+    for (const [name, ch] of [
+      ['a', a],
+      ['b', b],
+    ] as const) {
       assert.ok(ch.tileRow >= court.row && ch.tileRow < court.row + court.h, 'stays on court');
+      if (ch.speech) said.get(name)!.add(ch.speech);
     }
   }
   assert.equal(playing, false, 'the game ends');
   assert.deepEqual([...hitters].sort(), [0, 1], 'both hit the ball');
+
+  // Both talk; the game opens with a start line and closes with a wrap-up
+  assert.ok(said.get('a')!.size > 0 && said.get('b')!.size > 0, 'both players talk');
+  const all = new Set([...said.get('a')!, ...said.get('b')!]);
+  assert.ok(
+    PICKLEBALL.start.some((s) => all.has(s[0])),
+    'an opening line',
+  );
+  assert.ok(
+    PICKLEBALL.finish.some((s) => all.has(s[0])),
+    'a wrap-up line',
+  );
 
   endPickleball(game);
   assert.equal(a.state, CharacterState.IDLE);

@@ -348,6 +348,15 @@ const INVITE_NO: Record<InviteTo, readonly Script[]> = {
 
 /** Calls during a pickleball game; `finish` when time is up. */
 export const PICKLEBALL = {
+  /** As the first serve goes up: the server, then the other. */
+  start: [
+    ['Sẵn sàng chưa? Giao nè! 🏓', 'Tới luôn!'],
+    ['0-0-2, bắt đầu!', 'Nhẹ tay thôi nha 😅'],
+    ['Thua thì bao nước đó!', 'Chốt! Chuẩn bị móc ví đi 😏'],
+    ['Khởi động xong chưa?', 'Xong rồi, đánh thôi 💪'],
+    ['Ai thắng được chọn quán nhậu tối nay!', 'Vậy tui thắng chắc rồi 🍺'],
+  ] as readonly Script[],
+  /** One player's call, mid-rally. */
   rally: [
     'Đỡ nè!',
     'Bóng đẹp!',
@@ -359,8 +368,42 @@ export const PICKLEBALL = {
     'Dink nhẹ thôi 🏓',
     'Ối, hụt 😅',
     'Ghê vậy!',
+    'Lob nè, chạy đi!',
+    'Bóng lưới rồi 😩',
+    'Giao lại nha!',
+    '5-4, căng đó!',
+    'Vô kitchen là lỗi nha!',
+    'Đánh xoáy hả? 🌀',
+    'Hú hồn, suýt out',
+    'Ace! 🔥',
+    'Mệt quá, nghỉ xíu không? 🥵',
+    'Bóng này ăn chắc!',
   ],
-  finish: 'Hay quá, mai đánh tiếp! 🏓',
+  /** A call and the other's answer. */
+  exchanges: [
+    ['Bóng đó out mà!', 'Vô vạch rồi, vạch là in nha!'],
+    ['Smash nè! 💥', 'Đỡ được hết 😎'],
+    ['Tay nghề lên dữ ha', 'Tập mỗi tối đó 💪'],
+    ['Đánh nhẹ thôi, đau tay!', 'Vậy mới vui chứ 😂'],
+    ['Điểm mấy rồi?', '7-5, tui dẫn nha!'],
+    ['Ông đứng trong kitchen kìa!', 'Đâu có, chân ngoài vạch mà 🙄'],
+    ['Dink qua lại hoài vậy?', 'Ai nóng vội là thua đó 😏'],
+    ['Cú này học ở đâu vậy?', 'Xem YouTube 3 tiếng hôm qua 😂'],
+    ['Bóng cao quá!', 'Cơ hội smash của tui đó 💥'],
+    ['Chạy không nổi nữa 🥵', 'Ráng lên, còn mấy điểm thôi!'],
+    ['Sao đánh hay vậy?', 'Tại bia hôm qua đó 🍺'],
+    ['Giao bóng phải đánh dưới thắt lưng nha!', 'Biết rồi, luật thuộc lòng luôn'],
+    ['Ối, trúng lưới 😩', 'Haha, điểm của tui!'],
+    ['Sân này đẹp ghê', 'TNhunn mới làm đó, xịn chưa'],
+  ] as readonly Script[],
+  /** Time up: one wraps up, the other answers. */
+  finish: [
+    ['Hay quá, mai đánh tiếp! 🏓', 'Ok, mai phục thù!'],
+    ['11-9, tui thắng nha 😎', 'Ăn may thôi, mai đấu lại!'],
+    ['Thôi nghỉ, mệt rồi 🥵', 'Đi uống bia giải khát không? 🍺'],
+    ['Thua rồi, bao nước nha', 'Nhớ đó, trà sữa luôn 🧋'],
+    ['Đánh vui ghê!', 'Lần sau rủ thêm người đánh đôi đi'],
+  ] as readonly Script[],
 };
 
 export function inviteDialogue(to: InviteTo, accepted: boolean): Script {

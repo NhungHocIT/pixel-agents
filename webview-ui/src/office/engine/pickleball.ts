@@ -45,6 +45,8 @@ export interface PickleballGame {
   shot: { by: 0 | 1; from: Tile; to: Tile; t: number } | null;
   /** Seconds until the next call. */
   chatTimer: number;
+  /** The lines being said, alternating between players from `first`. */
+  talk: { lines: readonly string[]; index: number; first: 0 | 1 } | null;
 }
 
 /** Where each player stands to start: a tile in from either baseline, mid-court. */
@@ -69,7 +71,7 @@ export function startPickleball(
     startWalk(ch, paths[i], FACING[i]);
     ch.speech = null;
   });
-  return { players, court, phase: 'gather', timer: 0, shot: null, chatTimer: 0 };
+  return { players, court, phase: 'gather', timer: 0, shot: null, chatTimer: 0, talk: null };
 }
 
 /** Straight up or down the player's column to `row`. */
@@ -109,6 +111,10 @@ export function updatePickleball(game: PickleballGame, dt: number): boolean {
     game.phase = 'play';
     game.timer = 0;
     hit(game, 0);
+    // The server opens with a line, the other answers
+    game.talk = { lines: randomOf(PICKLEBALL.start), index: 0, first: 0 };
+    game.chatTimer = PICKLEBALL_CHAT_SEC;
+    voice(game);
   }
 
   const shot = game.shot!;
@@ -119,15 +125,39 @@ export function updatePickleball(game: PickleballGame, dt: number): boolean {
   }
 
   game.chatTimer -= dt;
-  if (game.chatTimer <= 0) {
-    game.chatTimer = PICKLEBALL_CHAT_SEC;
-    const last = game.timer >= PICKLEBALL_GAME_SEC - PICKLEBALL_CHAT_SEC;
-    const speaker = randomOf(game.players);
-    for (const ch of game.players) {
-      ch.speech = ch === speaker ? (last ? PICKLEBALL.finish : randomOf(PICKLEBALL.rally)) : null;
-    }
-  }
+  if (game.chatTimer <= 0) talkOn(game);
   return true;
+}
+
+/** The next line: carry on what is being said, else start something new — the
+ *  wrap-up near the end, otherwise a call and answer or a lone call. */
+function talkOn(game: PickleballGame): void {
+  game.chatTimer = PICKLEBALL_CHAT_SEC;
+  const lastTwo = game.timer >= PICKLEBALL_GAME_SEC - 2 * PICKLEBALL_CHAT_SEC;
+  const talk = game.talk;
+  if (talk && talk.index + 1 < talk.lines.length) {
+    talk.index++;
+  } else if (lastTwo && talk?.lines !== undefined && PICKLEBALL.finish.includes(talk.lines)) {
+    // Said goodbye already: quiet until the game ends
+    for (const ch of game.players) ch.speech = null;
+    return;
+  } else {
+    const first: 0 | 1 = Math.random() < 0.5 ? 0 : 1;
+    const lines = lastTwo
+      ? randomOf(PICKLEBALL.finish)
+      : Math.random() < 0.5
+        ? randomOf(PICKLEBALL.exchanges)
+        : [randomOf(PICKLEBALL.rally)];
+    game.talk = { lines, index: 0, first };
+  }
+  voice(game);
+}
+
+/** Put the current line over whoever's turn it is to say it. */
+function voice(game: PickleballGame): void {
+  const talk = game.talk!;
+  const speaker = game.players[(talk.first + talk.index) % 2];
+  for (const ch of game.players) ch.speech = ch === speaker ? talk.lines[talk.index] : null;
 }
 
 /** Game over: back to the normal FSM where they stand. */
