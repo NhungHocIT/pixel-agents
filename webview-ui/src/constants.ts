@@ -188,7 +188,8 @@ export const PICKLEBALL_SHADOW_COLOR = '#00000055';
  *  loop): League while TNhunn plays LoL. */
 export type MusicScene = 'lol';
 export const MUSIC_TRACKS: Record<MusicScene, readonly string[]> = {
-  lol: ['r6zIGXun57U', 'C3GouGa0noM', 'UOxkGD8qRB4', 'fB8TyLTD7EE'],
+  // Legends Never Die (r6zIGXun57U) is left out: YouTube won't embed it
+  lol: ['C3GouGa0noM', 'UOxkGD8qRB4', 'fB8TyLTD7EE'],
 };
 /** Background music volume (0-100). */
 export const BACKGROUND_MUSIC_VOLUME = 40;

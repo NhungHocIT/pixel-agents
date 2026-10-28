@@ -18,14 +18,14 @@ interface YtPlayer {
   setVolume(volume: number): void;
   getCurrentTime(): number;
   getPlaylistIndex(): number;
+  nextVideo(): void;
 }
 
 interface YtNamespace {
   Player: new (
     el: HTMLElement,
     opts: {
-      playerVars: Record<string, string | number>;
-      events: { onReady: () => void };
+      events: { onReady: () => void; onError: () => void };
     },
   ) => YtPlayer;
 }
@@ -103,16 +103,27 @@ function createPlayer(yt: YtNamespace): void {
   const host = document.createElement('div');
   host.style.cssText =
     'position:fixed;left:-10000px;top:0;width:200px;height:200px;opacity:0;pointer-events:none;';
-  const el = document.createElement('div');
+  // Our own iframe: the page sends no Referer (index.html, the URL carries the
+  // token), but YouTube refuses embeds without one. Send just the origin.
+  const el = document.createElement('iframe');
+  el.width = el.height = '200';
+  el.allow = 'autoplay; encrypted-media';
+  el.referrerPolicy = 'strict-origin';
+  el.src =
+    'https://www.youtube.com/embed/?enablejsapi=1&controls=0&playsinline=1&origin=' +
+    encodeURIComponent(location.origin);
   host.appendChild(el);
   document.body.appendChild(host);
   player = new yt.Player(el, {
-    playerVars: { autoplay: 0, controls: 0, playsinline: 1 },
     events: {
       onReady: () => {
         ready = true;
         player!.setVolume(volume);
         apply();
+      },
+      // A track that can't play here (embedding off, removed): on to the next
+      onError: () => {
+        if (playing) player!.nextVideo();
       },
     },
   });
