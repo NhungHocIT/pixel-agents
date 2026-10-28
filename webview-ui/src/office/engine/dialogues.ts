@@ -272,33 +272,36 @@ const PAIR: readonly { pair: readonly [string, string]; lines: Script }[] = [
 ];
 
 // ── Tèo phục vụ ──────────────────────────────────────────────
+// Tèo opens; the customer's lines (every second one) are only orders and
+// service requests — nobody makes small talk with the waiter.
 const WAITER_BAR: readonly Script[] = [
-  ['Bia của mình đây ạ! 🍺', 'Cảm ơn em nha!'],
-  ['Thêm đá không ạ?', 'Cho thêm ít đá nhé', 'Có ngay ạ! 🧊'],
-  ['Hôm nay có mực nướng ngon lắm ạ', 'Cho một đĩa đi em!', 'Dạ, 5 phút có liền!'],
-  ['Ly này quán mời ạ 🎁', 'Ôi, chu đáo quá!'],
-  ['Mình dùng thêm gì không ạ?', 'Thêm 1 ly nữa em ơi', 'Dạ có ngay! 🍻'],
-  ['Ly lạnh lắm, cẩn thận nha', 'Mát ghê, đúng lúc quá'],
-  ['Em dọn ly cũ nhé', 'Ừ, cảm ơn em'],
-  ['Bia tươi mới về đó ạ, thử không?', 'Thử luôn!', 'Ngon lắm đó ạ 😋'],
-  ['Đậu phộng rang cho mình nè 🥜', 'Đúng món khoái khẩu!'],
-  ['Nước lọc cho mình đỡ say nha 💧', 'Em tâm lý ghê'],
-  ['Hôm nay làm việc mệt không ạ?', 'Mệt, nhưng có bia là hết mệt', 'Vậy em rót thêm nha 🍺'],
+  ['Mình dùng gì ạ?', 'Cho 1 ly bia hơi', 'Dạ có ngay ạ! 🍺'],
+  ['Bia của mình đây ạ! 🍺', 'Thêm ít đá giúp mình', 'Dạ, em mang ra liền 🧊'],
+  ['Hôm nay có mực nướng ạ', 'Cho một đĩa mực nướng', 'Dạ, 5 phút có liền!'],
+  ['Mình gọi thêm gì không ạ?', 'Thêm 2 ly nữa nhé', 'Dạ có ngay! 🍻'],
+  ['Dạ, mình cần gì ạ?', 'Cho xin đĩa đậu phộng 🥜', 'Dạ, có liền ạ'],
+  ['Em dọn ly cũ nhé', 'Lau bàn giúp mình luôn', 'Dạ được ạ'],
+  ['Dạ, mình gọi em ạ?', 'Cho 1 chai nước suối 💧', 'Dạ, em lấy ngay'],
+  ['Món mình đây ạ', 'Cho thêm chén nước chấm', 'Dạ, có ngay ạ'],
+  ['Mình dùng thêm gì không ạ?', 'Tính tiền giúp mình', 'Dạ, em mang hoá đơn ra ạ 🧾'],
+  ['Dạ, mình cần gì ạ?', 'Cho mình xin thực đơn', 'Dạ, thực đơn đây ạ 📋'],
+  ['Bia tươi mới về đó ạ', 'Cho thử 1 ly', 'Dạ, em rót liền 🍺'],
 ];
 const WAITER_GAME: readonly Script[] = [
-  ['Nước tăng lực cho game thủ đây ạ! ⚡', 'Đúng lúc quá, đang combat!'],
-  ['Thắng mấy trận rồi ạ?', 'Thua 3 thắng 1 😭', 'Uống ly này lấy hên nha!'],
-  ['Snack đây ạ, đừng để dính phím nha 🍿', 'Haha, cảm ơn em'],
-  ['Em đứng xem chút được không?', 'Được, coi anh gánh team nè 😎', 'Ghê quá!'],
-  ['Trà sữa cho mình nè 🧋', 'Ngon! Ghi sổ giùm nhé'],
-  ['Máy có lag không ạ?', 'Mượt lắm em', 'Dạ, có gì cứ gọi em nha'],
-  ['Mì ly nóng hổi đây ạ 🍜', 'Đói muốn xỉu, cảm ơn em!'],
-  ['Chơi lâu rồi, nghỉ mắt chút nha', 'Một trận nữa thôi...', 'Câu này em nghe hoài 😆'],
+  ['Mình dùng gì ạ?', 'Cho 1 lon nước tăng lực ⚡', 'Dạ có ngay ạ!'],
+  ['Dạ, mình cần gì ạ?', 'Cho 1 gói snack 🍿', 'Dạ, em mang tới liền'],
+  ['Mình gọi thêm gì không ạ?', 'Cho 1 ly trà sữa 🧋', 'Dạ, trà sữa có ngay'],
+  ['Dạ, mình gọi em ạ?', 'Pha giúp mình ly mì 🍜', 'Dạ, 3 phút có liền ạ'],
+  ['Dạ, máy có vấn đề gì ạ?', 'Đổi giúp mình tai nghe khác 🎧', 'Dạ, em lấy cái mới ngay'],
+  ['Mình cần gì ạ?', 'Thêm giờ chơi giúp mình', 'Dạ, em gia hạn rồi ạ'],
+  ['Nước của mình đây ạ', 'Thêm 1 chai nước lọc nữa', 'Dạ có ngay ạ 💧'],
+  ['Dạ, mình gọi em ạ?', 'Lau bàn phím giúp mình', 'Dạ, em lau liền ạ'],
 ];
 const WAITER_SOFA: readonly Script[] = [
-  ['Trái cây mới gọt đây ạ 🍎', 'Ôi, cảm ơn em!'],
-  ['Thêm nước cho mình nha 💧', 'Em chu đáo ghê'],
-  ['Mình cần thêm gối không ạ?', 'Cho thêm cái nữa, nằm cho sướng 😴'],
+  ['Mình dùng gì ạ?', 'Cho 1 đĩa trái cây 🍎', 'Dạ, em gọt liền ạ'],
+  ['Dạ, mình cần gì ạ?', 'Cho thêm 1 cái gối', 'Dạ, gối đây ạ'],
+  ['Mình gọi thêm gì không ạ?', 'Cho 1 ấm trà nóng ☕', 'Dạ, có ngay ạ'],
+  ['Dạ, mình gọi em ạ?', 'Thêm nước vào ly giúp mình 💧', 'Dạ, em rót liền'],
 ];
 
 export function randomOf<T>(list: readonly T[]): T {
