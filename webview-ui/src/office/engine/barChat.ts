@@ -47,6 +47,11 @@ function lineSec(text: string): number {
   return Math.min(CHAT_LINE_MAX_SEC, Math.max(CHAT_LINE_MIN_SEC, text.length * CHAT_SEC_PER_CHAR));
 }
 
+/** How long a script takes to say in full. */
+export function scriptSec(lines: readonly string[]): number {
+  return lines.reduce((sum, line) => sum + lineSec(line), 0);
+}
+
 function endChat(chat: BarChat): void {
   // After a hello on the way, keep walking for a good while before the next one
   const [min, max] =

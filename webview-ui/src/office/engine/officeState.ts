@@ -4,6 +4,7 @@ import {
   AUTO_ON_SIDE_DEPTH,
   BAR_PATRONS_ENABLED,
   BED_FURNITURE_TYPE,
+  BYE_LINGER_SEC,
   CHARACTER_HIT_HALF_WIDTH,
   CHARACTER_HIT_HEIGHT,
   CHARACTER_NAMES,
@@ -83,12 +84,12 @@ import type {
 } from '../types.js';
 import { CharacterState, Direction, PetState, TILE_SIZE } from '../types.js';
 import type { BarChat, ChatInvite } from './barChat.js';
-import { startChat, updateChats } from './barChat.js';
+import { scriptSec, startChat, updateChats } from './barChat.js';
 import { createPatron, isPatron, sendPatronToRest, tickPatronSchedule } from './barPatrons.js';
 import { characterNameOf, storyAnchorName, storySyncName, storyTiesOf } from './barStory.js';
 import { characterDrawOffsetPx, createCharacter, updateCharacter } from './characters.js';
 import type { ChatPlace, InviteTo } from './dialogues.js';
-import { PICKLEBALL, randomOf, waiterDialogue } from './dialogues.js';
+import { FAREWELL, PICKLEBALL, randomOf, waiterDialogue } from './dialogues.js';
 import type { ExerciseSession, ExerciseSlot } from './exercise.js';
 import {
   beginWorkout,
@@ -116,7 +117,7 @@ import type { WaiterRound } from './waiter.js';
 import { isServable, newWaiterRound, serveSpots } from './waiter.js';
 import { startWalk, stepWalk } from './walking.js';
 
-/** Palettes of TNhunn (the user's avatar, owner of the agents) and the waiter â€”
+/** Palettes of TNhunn (the user's avatar, owner of the agents) and the waiter —
  *  never given to an agent. */
 const STAFF_PALETTES = new Set(
   [USER_AVATAR_NAME, WAITER_NAME].map((n) => CHARACTER_NAMES.indexOf(n)).filter((i) => i >= 0),
@@ -152,7 +153,7 @@ export class OfficeState {
     for (const listener of this.selectionListeners) listener(id);
   }
   /** Observe selectedAgentId changes. React (the card bars) subscribes so
-   *  imperative canvas selection can drive card highlights â€” everything else
+   *  imperative canvas selection can drive card highlights — everything else
    *  about selection stays out of React state. Returns the unsubscribe. */
   subscribeSelection(listener: (id: number | null) => void): () => void {
     this.selectionListeners.add(listener);
@@ -161,14 +162,14 @@ export class OfficeState {
   cameraFollowId: number | null = null;
   hoveredAgentId: number | null = null;
   hoveredTile: { col: number; row: number } | null = null;
-  /** Maps "parentId:toolId" â†’ sub-agent character ID (negative) */
+  /** Maps "parentId:toolId" → sub-agent character ID (negative) */
   subagentIdMap: Map<string, number> = new Map();
-  /** Reverse lookup: sub-agent character ID â†’ parent info */
+  /** Reverse lookup: sub-agent character ID → parent info */
   subagentMeta: Map<number, { parentAgentId: number; parentToolId: string }> = new Map();
   private nextSubagentId = -1;
 
   /**
-   * directoryName â†’ list of Area labels that Directory belongs to.
+   * directoryName → list of Area labels that Directory belongs to.
    * Populated by useExtensionMessages on `areaMappingsLoaded`. Consulted by
    * `findFreeSeat()` to bias new agents toward seats inside their Directory's Area.
    */
@@ -177,9 +178,9 @@ export class OfficeState {
   /**
    * The first-run consent greeter, deliberately NOT in `characters`.
    *
-   * `characters` means "agents": everything that iterates it â€” seat
+   * `characters` means "agents": everything that iterates it — seat
    * assignment, palette diversity, the wander FSM, hit-testing, the seat
-   * payload the webview persists â€” is asking an agent question the greeter has
+   * payload the webview persists — is asking an agent question the greeter has
    * no answer to. Holding it here instead of tagging it with a flag makes
    * every one of those loops correct by default, rather than correct as long
    * as each remembers an `isGreeter` guard. It is drawn because
@@ -475,7 +476,7 @@ export class OfficeState {
     return isPatron(ch) && characterNameOf(ch) === WAITER_NAME;
   }
 
-  /** The waiter's rounds: counter â†’ a customer's side â†’ a word with them â†’ counter. */
+  /** The waiter's rounds: counter → a customer's side → a word with them → counter. */
   private updateWaiter(w: Character, dt: number): void {
     w.frameTimer += dt;
     w.seatId = null;
@@ -801,13 +802,14 @@ export class OfficeState {
 
   /** Now and then a new chat is `a` asking `b` along. Patrons: for a beer (a
    *  table with two free seats), to the sofa (unless one is on it), or to play
-   *  pickleball (the court is free) â€” idle agents only to pickleball. Never
-   *  between two already drinking at one table. Null: just a chat. */
+   *  pickleball (the court is free) — idle agents only to pickleball. Nobody
+   *  drinking with someone is asked away: they leave only after saying bye.
+   *  Null: just a chat. */
   private inviteOf(a: Character, b: Character): ChatInvite | null {
     const patrons = this.canBeInvited(a) && this.canBeInvited(b);
     const players = this.canPlay(a) && this.canPlay(b);
     if (!patrons && !players) return null;
-    if (this.drinkingTogether(a, b)) return null;
+    if (this.tablemates(a).length > 0 || this.tablemates(b).length > 0) return null;
     if (Math.random() >= CHAT_INVITE_CHANCE) return null;
     const options: InviteTo[] = [];
     if (patrons && this.seatsTogether(a, b, 'beer')) options.push('beer');
@@ -817,6 +819,23 @@ export class OfficeState {
     if (players && this.court() && !this.pickleball) options.push('pickleball');
     if (options.length === 0) return null;
     return { to: randomOf(options), accepted: Math.random() < CHAT_INVITE_ACCEPT_CHANCE };
+  }
+
+  /** `ch` is getting up from a table where friends are drinking: it says bye
+   *  and the nearest of them answers (whatever either was saying stops). Marks
+   *  it said; returns how long the goodbye takes, 0 with nobody to tell. */
+  private sayBye(ch: Character): number {
+    ch.saidBye = true;
+    const mates = this.tablemates(ch);
+    if (mates.length === 0) return 0;
+    const dist = (o: Character) =>
+      Math.abs(o.tileCol - ch.tileCol) + Math.abs(o.tileRow - ch.tileRow);
+    const mate = mates.reduce((m, o) => (dist(o) < dist(m) ? o : m));
+    this.chats = this.chats.filter((c) => !c.speakers.includes(ch) && !c.speakers.includes(mate));
+    for (const o of [ch, mate]) o.speech = null;
+    const lines = randomOf(FAREWELL);
+    this.chats.push(startChat([ch, mate], lines, 'table'));
+    return scriptSec(lines) + BYE_LINGER_SEC;
   }
 
   /** A yes: both get up from whatever they were doing and head there now, together. */
@@ -1009,7 +1028,7 @@ export class OfficeState {
   }
 
   /** Sofa sitters drink no beer: they sit, and every so often take a free glass
-   *  off the tray, sip, and put it back. All glasses out â€” wait a moment. */
+   *  off the tray, sip, and put it back. All glasses out — wait a moment. */
   private updateSofaSitting(dt: number): void {
     let glassesMoved = false;
     const drawn = this.getDrawnCharacters();
@@ -1195,14 +1214,20 @@ export class OfficeState {
   }
 
   private updatePatron(p: Character, dt: number): void {
-    // An agent took this patron's seat â€” give it up
+    // An agent took this patron's seat — give it up
     if (p.seatId) {
       const seat = this.seats.get(p.seatId);
       if (!seat || seat.assigned) sendPatronToRest(p, PATRON_SEAT_RETRY_SEC);
     }
     if (this.isUserAvatar(p)) this.steerUserAvatar(p);
+    // Done drinking with friends at the table: say bye first, go once it's said
+    if (p.isActive && (p.patronTimer ?? 0) <= dt && !p.saidBye) {
+      const byeSec = this.sayBye(p);
+      if (byeSec > 0) p.patronTimer = byeSec;
+    }
     const wasActive = p.isActive;
     tickPatronSchedule(p, dt, () => this.pickPatronSeat(p));
+    if (!p.isActive) p.saidBye = false;
     this.updateStory(p, dt, wasActive);
     if (this.isUserAvatar(p)) this.steerOwnerRounds(p, dt);
     this.updateRestAssignment(p);
@@ -1322,7 +1347,7 @@ export class OfficeState {
 
     const areaLabels = directoryName ? this.areaMappings[directoryName] : undefined;
 
-    // Stage 1 â€” in-area seats for the Directory's mapped Area labels.
+    // Stage 1 — in-area seats for the Directory's mapped Area labels.
     if (areaLabels && areaLabels.length > 0) {
       const wanted = new Set(areaLabels);
       const inArea = freeSeats.filter((uid) => {
@@ -1333,12 +1358,12 @@ export class OfficeState {
       if (pick) return pick;
     }
 
-    // Stage 2 â€” unzoned seats (no area label, or layout has no areas at all).
+    // Stage 2 — unzoned seats (no area label, or layout has no areas at all).
     const unzoned = freeSeats.filter((uid) => this.seatZone(uid) === null);
     const pick2 = this.pickFromSeats(unzoned, electronicsTiles);
     if (pick2) return pick2;
 
-    // Stage 3 â€” any free seat.
+    // Stage 3 — any free seat.
     return this.pickFromSeats(freeSeats, electronicsTiles);
   }
 
@@ -1364,7 +1389,7 @@ export class OfficeState {
   /**
    * Pick a diverse palette for a new agent based on currently active agents.
    * First 6 agents each get a unique skin (random order). Beyond 6, skins
-   * repeat in balanced rounds with a random hue shift (â‰¥45Â°).
+   * repeat in balanced rounds with a random hue shift (≥45°).
    */
   private pickDiversePalette(): { palette: number; hueShift: number } {
     // Count how many non-sub-agents use each base palette (0-5)
@@ -1430,7 +1455,7 @@ export class OfficeState {
       seat.assigned = true;
       ch = createCharacter(id, palette, seatId, seat, hueShift);
     } else {
-      // No seats â€” teammates spawn beside their anchor, others at a random walkable tile
+      // No seats — teammates spawn beside their anchor, others at a random walkable tile
       let spawn = anchorAt ? this.closestFreeWalkableTile(anchorAt.col, anchorAt.row) : null;
       if (!spawn) {
         spawn =
@@ -1454,10 +1479,10 @@ export class OfficeState {
     this.characters.set(id, ch);
   }
 
-  // â”€â”€ Greeter â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+  // ── Greeter ───────────────────────────────────────────────────
   // The Intro is diegetic: a char_0 character stands near the office's
   // bottom-left corner and "speaks" the tour through a DOM bubble
-  // (IntroBubble). It is not an agent â€” see the `greeter` field.
+  // (IntroBubble). It is not an agent — see the `greeter` field.
 
   /** Spawn the greeter near the office's bottom-left corner: target tile
    *  GREETER_TILE_MARGIN in from the left and bottom edges, falling
@@ -1475,7 +1500,7 @@ export class OfficeState {
       GREETER_TILE_MARGIN,
       this.layout.rows - 1 - GREETER_TILE_MARGIN,
     );
-    if (!spawn) return; // no walkable tile â€” IntroBubble falls back to a fixed panel
+    if (!spawn) return; // no walkable tile — IntroBubble falls back to a fixed panel
     const ch = createCharacter(GREETER_ID, 0, null, null, 0);
     ch.isGreeter = true;
     ch.state = CharacterState.IDLE;
@@ -1491,7 +1516,7 @@ export class OfficeState {
 
   /** Start the greeter's despawn effect and release the greeter camera. The
    *  character is dropped once the effect finishes (see update()).
-   *  Idempotent â€” every close path (answer, Escape, hooksStatus) funnels here. */
+   *  Idempotent — every close path (answer, Escape, hooksStatus) funnels here. */
   despawnGreeter(): void {
     this.greeterCameraTarget = null;
     this.greeterCameraCancelled = false;
@@ -1517,7 +1542,7 @@ export class OfficeState {
     this.cancelGreeterCamera();
   }
 
-  /** Select an agent's character and have the camera follow it â€” what a card
+  /** Select an agent's character and have the camera follow it — what a card
    *  tap does to the office. No-op for an agent with no character. */
   selectAndFollow(id: number): void {
     if (!this.characters.has(id)) return;
@@ -1579,7 +1604,7 @@ export class OfficeState {
       ch.frame = 0;
       ch.frameTimer = 0;
     } else {
-      // Already at seat or no path â€” sit down
+      // Already at seat or no path — sit down
       ch.state = CharacterState.TYPE;
       ch.dir = seat.facingDir;
       ch.frame = 0;
@@ -1593,7 +1618,7 @@ export class OfficeState {
   /**
    * Move a just-linked teammate to the free seat closest to its lead, so teams
    * cluster. Only moves when that seat is strictly closer than the teammate's
-   * current one â€” a teammate created as a plain external agent (seated by an
+   * current one — a teammate created as a plain external agent (seated by an
    * arbitrary findFreeSeat) and tagged as a teammate only after tag discovery
    * would otherwise keep its arbitrary seat, unlike an inline teammate seated
    * next to the lead at creation.
@@ -1634,7 +1659,7 @@ export class OfficeState {
       ch.frame = 0;
       ch.frameTimer = 0;
     } else {
-      // Already at seat â€” sit down
+      // Already at seat — sit down
       ch.state = CharacterState.TYPE;
       ch.dir = seat.facingDir;
       ch.frame = 0;
@@ -1710,7 +1735,7 @@ export class OfficeState {
     const ch = this.characters.get(id);
     if (ch) {
       if (ch.matrixEffect === 'despawn') {
-        // Already despawning â€” just clean up maps
+        // Already despawning — just clean up maps
         this.subagentIdMap.delete(key);
         this.subagentMeta.delete(id);
         return;
@@ -1719,7 +1744,7 @@ export class OfficeState {
         const seat = this.seats.get(ch.seatId);
         if (seat) seat.assigned = false;
       }
-      // Start despawn animation â€” keep character in map for rendering
+      // Start despawn animation — keep character in map for rendering
       startMatrixEffect(ch, 'despawn');
       ch.bubbleType = null;
     }
@@ -1739,7 +1764,7 @@ export class OfficeState {
         const ch = this.characters.get(id);
         if (ch) {
           if (ch.matrixEffect === 'despawn') {
-            // Already despawning â€” just clean up maps
+            // Already despawning — just clean up maps
             this.subagentMeta.delete(id);
             toRemove.push(key);
             continue;
@@ -1893,7 +1918,7 @@ export class OfficeState {
     }
   }
 
-  /** Dismiss bubble on click â€” permission: instant, waiting: quick fade */
+  /** Dismiss bubble on click — permission: instant, waiting: quick fade */
   dismissBubble(id: number): void {
     const ch = this.characters.get(id);
     if (!ch || !ch.bubbleType) return;
@@ -1906,7 +1931,7 @@ export class OfficeState {
     }
   }
 
-  // â”€â”€ Pets â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+  // ── Pets ──────────────────────────────────────────────────────
 
   /**
    * Add a pet to the live runtime. Spawns at a uniformly-random walkable tile.
@@ -1930,7 +1955,7 @@ export class OfficeState {
       return;
     }
     if (this.pets.some((p) => p.id === placedPet.id)) return; // de-dupe
-    if (this.walkableTiles.length === 0) return; // no spawn space â€” silently drop
+    if (this.walkableTiles.length === 0) return; // no spawn space — silently drop
 
     const spawn = this.walkableTiles[Math.floor(Math.random() * this.walkableTiles.length)];
     const pet = createPet(placedPet.id, placedPet.petType, spawn.col, spawn.row);
@@ -1996,9 +2021,9 @@ export class OfficeState {
 
   /**
    * Reconcile `this.pets` to match the layout's placed-pet roster.
-   * - Pets in layout but not in runtime â†’ spawn via addPet().
-   * - Pets in runtime but not in layout â†’ remove.
-   * - Pets in both â†’ keep existing runtime state (position, FSM).
+   * - Pets in layout but not in runtime → spawn via addPet().
+   * - Pets in runtime but not in layout → remove.
+   * - Pets in both → keep existing runtime state (position, FSM).
    *
    * Called from constructor and rebuildFromLayout. Always runs AFTER walkableTiles
    * is populated.
@@ -2023,7 +2048,7 @@ export class OfficeState {
 
   /**
    * Re-export the current pet roster into `this.layout.pets`. Called only from
-   * mutating methods (addPet / removePet / rebuildPetsFromLayout) â€” NEVER from
+   * mutating methods (addPet / removePet / rebuildPetsFromLayout) — NEVER from
    * getLayout(), which runs on every render frame.
    */
   private syncLayoutPets(): void {
@@ -2152,7 +2177,7 @@ export class OfficeState {
     return null;
   }
 
-  /** Gather â†’ workout once the line has formed (or the wait ran out) â†’ done. */
+  /** Gather → workout once the line has formed (or the wait ran out) → done. */
   private tickExercise(dt: number): void {
     const ex = this.exercise;
     if (!ex) return;
@@ -2192,7 +2217,7 @@ export class OfficeState {
     }
 
     // The greeter materializes and dematerializes like anyone else, but runs
-    // no FSM â€” it stands where it spawned for as long as the ask is up.
+    // no FSM — it stands where it spawned for as long as the ask is up.
     if (this.greeter && advanceMatrixEffect(this.greeter, dt) === 'despawned') {
       this.greeter = null;
     }
@@ -2218,6 +2243,12 @@ export class OfficeState {
       } else if (partner) {
         this.holdForHello(ch, partner);
       } else {
+        // Work done while drinking with friends at the table: bye before getting up
+        if (ch.isActive || ch.state !== CharacterState.TYPE) ch.saidBye = false;
+        else if (!ch.saidBye) {
+          const byeSec = this.sayBye(ch);
+          if (byeSec > 0) ch.seatTimer = Math.max(ch.seatTimer, byeSec);
+        }
         this.updateRestAssignment(ch);
 
         // Temporarily unblock own seat (and rest spot) so character can pathfind to it
@@ -2249,12 +2280,12 @@ export class OfficeState {
       this.characters.delete(id);
     }
 
-    // â”€â”€ Bar patrons â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+    // ── Bar patrons ────────────────────────────────────────────
     this.ensurePatrons();
     const twins = this.agentPaletteKeys();
     for (const p of this.patrons) {
       if (twins.has(p.palette)) {
-        // Its agent twin is here â€” hold no seat or rest spot while hidden
+        // Its agent twin is here — hold no seat or rest spot while hidden
         if (p.seatId || p.isActive) sendPatronToRest(p, PATRON_SEAT_RETRY_SEC);
         p.restSpot = null;
         continue;
@@ -2271,7 +2302,7 @@ export class OfficeState {
     this.updateChat(dt);
     this.tickPickleball(dt);
 
-    // â”€â”€ Pet FSM â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+    // ── Pet FSM ────────────────────────────────────────────────
     for (const pet of this.pets) {
       updatePet(pet, dt, this.walkableTiles, this.characters, this.tileMap, this.blockedTiles);
 
@@ -2288,7 +2319,7 @@ export class OfficeState {
 
   /** The `saveAgentSeats` payload: palette, hue and seat for every agent worth
    *  restoring. Sub-agents are excluded because they are derived state the
-   *  runtime re-materializes, and the greeter never reaches here at all â€”
+   *  runtime re-materializes, and the greeter never reaches here at all —
    *  it is not in `characters`. */
   getPersistableSeats(): Record<
     number,
@@ -2304,7 +2335,7 @@ export class OfficeState {
 
   /** Everything the renderer draws: the agents plus, while the first-run ask
    *  is up, the consent greeter. This is the ONE place the greeter joins the
-   *  agents â€” every other consumer reads `characters` and gets agents only. */
+   *  agents — every other consumer reads `characters` and gets agents only. */
   getCharacters(): Character[] {
     const chars = Array.from(this.characters.values());
     if (this.greeter) chars.push(this.greeter);

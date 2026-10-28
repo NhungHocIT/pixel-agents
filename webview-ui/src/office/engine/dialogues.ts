@@ -4,6 +4,7 @@
  *
  *   BAR      — sitting or standing in the bar (drinks, food, work talk)
  *   TABLE    — drinking beer together at one table (toasts, rounds, life talk)
+ *   FAREWELL — getting up from that table: bye first, then go
  *   GAME     — in the game room / at a gaming PC
  *   SOFA     — on the lounge sofa
  *   STREET   — two people bumping into each other on the way somewhere
@@ -451,6 +452,18 @@ const TABLE: readonly Script[] = [
   ['Ly này vì bug đã fix!', 'Vì deadline đã qua!', 'Vì cuối tháng có lương! 🍻'],
   ['Bàn này vui nhất quán luôn', 'Tại có tui đó 😎', 'Thôi uống đi ông 😂'],
   ['Hết bia rồi kìa', 'Gọi tiếp chứ sao!', 'Hôm nay không say không về 🍺'],
+];
+
+/** Getting up from a beer with friends: the one leaving says bye, a tablemate answers. */
+export const FAREWELL: readonly Script[] = [
+  ['Thôi tui về trước nha, mai gặp! 👋', 'Ok, về cẩn thận nha!'],
+  ['Hết sức rồi, tui nghỉ đây 🥴', 'Yếu vậy! Thôi về đi 😂'],
+  ['Tui không uống nữa đâu, đủ rồi 🙅', 'Ok, để tui xử nốt ly này 🍺'],
+  ['Mai còn deadline, tui rút trước nha', 'Ừ, code ngon nha! 💻'],
+  ['Cảm ơn ly bia nha, lần sau tui mời!', 'Nhớ đó, hứa rồi nha 🤝'],
+  ['Bye bye cả bàn! 👋', 'Bye, về ngủ sớm đi!'],
+  ['Thôi đi ngủ đây, buồn ngủ quá 😴', 'Ngủ ngon nha!'],
+  ['Tui đi trước, mọi người cứ tự nhiên', 'Ok, mai nhậu tiếp! 🍻'],
 ];
 
 export function randomOf<T>(list: readonly T[]): T {

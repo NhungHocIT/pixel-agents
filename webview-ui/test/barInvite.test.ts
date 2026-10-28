@@ -19,6 +19,7 @@ vi.mock('../src/office/sprites/spriteData.js', async (importOriginal) => ({
 import type { BarChat } from '../src/office/engine/barChat.js';
 import { updateChats } from '../src/office/engine/barChat.js';
 import { createCharacter } from '../src/office/engine/characters.js';
+import { FAREWELL } from '../src/office/engine/dialogues.js';
 import { OfficeState } from '../src/office/engine/officeState.js';
 import type { LoadedAssetData } from '../src/office/layout/furnitureCatalog.js';
 import { buildDynamicCatalog } from '../src/office/layout/furnitureCatalog.js';
@@ -130,4 +131,34 @@ test('an agent drinks at its desk even alone (the two-at-a-table rule is for pat
   const agent = office.characters.get(1)!;
   assert.equal(agent.state, CharacterState.TYPE);
   assert.equal(agent.noBeer, false);
+});
+
+test('getting up from friends at the table: bye first, an answer, then off', () => {
+  const office = new OfficeState(layout());
+  for (const [id, seat] of [
+    [1, 'c1'],
+    [2, 'c2'],
+  ] as const) {
+    office.addAgent(id, undefined, undefined, seat, true);
+    office.setAgentActive(id, true);
+  }
+  settle(office);
+  const leaver = office.characters.get(1)!;
+  const mate = office.characters.get(2)!;
+  assert.equal(leaver.state, CharacterState.TYPE);
+  assert.equal(mate.state, CharacterState.TYPE);
+
+  office.setAgentActive(1, false);
+  office.update(0.05);
+  const bye = FAREWELL.find((s) => s[0] === leaver.speech);
+  assert.ok(bye, `says bye first (said: ${String(leaver.speech)})`);
+  assert.equal(leaver.state, CharacterState.TYPE, 'still seated while saying it');
+
+  let answered = false;
+  for (let i = 0; i < 400 && leaver.state === CharacterState.TYPE; i++) {
+    office.update(0.05);
+    if (mate.speech === bye[1]) answered = true;
+  }
+  assert.ok(answered, 'a tablemate answers before the leaver gets up');
+  assert.notEqual(leaver.state, CharacterState.TYPE, 'then gets up');
 });
