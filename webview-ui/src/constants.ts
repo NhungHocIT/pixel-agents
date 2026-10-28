@@ -176,6 +176,9 @@ export const PICKLEBALL_CHAT_SEC = 4;
 export const PICKLEBALL_BALL_COLOR = '#DDF23A';
 export const PICKLEBALL_BALL_RIM_COLOR = '#9DB020';
 export const PICKLEBALL_SHADOW_COLOR = '#00000055';
+/** Background music during a game: a YouTube video id, and its volume (0-100). */
+export const PICKLEBALL_MUSIC_VIDEO_ID = 'IzSYlr3VI1A';
+export const PICKLEBALL_MUSIC_VOLUME = 40;
 export const SPEECH_TEXT_COLOR = '#1E1E28';
 export const SPEECH_BG_COLOR = '#FFFFFF';
 export const SPEECH_FONT_PX = 16;

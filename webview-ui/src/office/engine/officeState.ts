@@ -2306,6 +2306,11 @@ export class OfficeState {
     return chars;
   }
 
+  /** A pickleball game is on (players heading to the court count): the music plays. */
+  isPickleballOn(): boolean {
+    return this.pickleball !== null;
+  }
+
   /** What the canvas draws: `getCharacters()` plus the bar patrons. Kept apart
    *  so agent-facing consumers (e2e hooks, overlays) never see patrons. */
   getDrawnCharacters(): Character[] {

@@ -12,6 +12,7 @@ import {
   ZOOM_SCROLL_THRESHOLD,
 } from '../../constants.js';
 import { unlockAudio } from '../../notificationSound.js';
+import { setPickleballMusic } from '../../pickleballMusic.js';
 import { transport } from '../../transport/index.js';
 import { furnitureAt } from '../editor/editorActions.js';
 import { buildEditorRenderState } from '../editor/editorRenderState.js';
@@ -182,6 +183,7 @@ export function OfficeCanvas({
     const stop = startGameLoop(canvas, {
       update: (dt) => {
         officeState.update(dt);
+        setPickleballMusic(officeState.isPickleballOn());
       },
       render: (ctx) => {
         // Canvas dimensions are in device pixels
