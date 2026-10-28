@@ -52,3 +52,28 @@ test('the waiter walks up to a seated agent and has a word with them', () => {
   }
   assert.ok(served, 'waiter reached the table and spoke');
 });
+
+test('an order: the customer waits on it, then thanks the waiter before carrying on', () => {
+  loadCast();
+  const office = new OfficeState();
+  office.addAgent(1, undefined, undefined, undefined, true); // no seat: drinks in place
+  const agent = office.characters.get(1)!;
+  const waiterOf = () => office.getVisiblePatrons().find((p) => p.palette === WAITER)!;
+  let waited = false;
+  let worked = false;
+  let thanked = false;
+  for (let i = 0; i < 12000 && !thanked; i++) {
+    office.update(0.05);
+    const w = waiterOf();
+    if (agent.speech === '⏳') {
+      waited = true;
+      assert.equal(agent.frame, 0, 'still while waiting');
+      // The waiter is busy with it: wiping (hands moving) or off fetching
+      if (w.state === CharacterState.TYPE || w.state === CharacterState.WALK) worked = true;
+    }
+    if (waited && agent.speech && /cảm ơn/i.test(agent.speech)) thanked = true;
+  }
+  assert.ok(waited, 'the customer waits on the order');
+  assert.ok(worked, 'the waiter works on it');
+  assert.ok(thanked, 'and is thanked once it is done');
+});

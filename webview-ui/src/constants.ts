@@ -102,8 +102,14 @@ export const WAITER_NAME = 'Tèo';
 /** Pause at the counter between rounds. */
 export const WAITER_PAUSE_MIN_SEC = 3;
 export const WAITER_PAUSE_MAX_SEC = 8;
-/** How long the waiter stands at a table, serving. */
-export const WAITER_SERVE_SEC = 4;
+/** Doing an order: wiping a table or keyboard; getting a drink or snack ready at the counter. */
+export const WAITER_WIPE_SEC = 5;
+export const WAITER_PREPARE_SEC = 4;
+/** The working hands: a frame every this long; the wiping line changes every this long. */
+export const WAITER_WORK_FRAME_SEC = 0.2;
+export const WAITER_WORK_LINE_SEC = 2.5;
+/** The customer is kept at least this long ahead while the order is on (re-applied each frame). */
+export const WAITER_HOLD_SEC = 3;
 /** The same customer isn't served again within this long. */
 export const WAITER_RESERVE_SEC = 90;
 /** Gap (CSS px) between the avatar's name tag and its League title above it. */

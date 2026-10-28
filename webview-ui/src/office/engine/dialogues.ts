@@ -276,36 +276,84 @@ const PAIR: readonly { pair: readonly [string, string]; lines: Script }[] = [
 
 // ── Tèo phục vụ ──────────────────────────────────────────────
 // Tèo opens; the customer's lines (every second one) are only orders and
-// service requests — nobody makes small talk with the waiter.
-const WAITER_BAR: readonly Script[] = [
-  ['Mình dùng gì ạ?', 'Cho 1 ly bia hơi', 'Dạ có ngay ạ! 🍺'],
-  ['Bia của mình đây ạ! 🍺', 'Thêm ít đá giúp mình', 'Dạ, em mang ra liền 🧊'],
-  ['Hôm nay có mực nướng ạ', 'Cho một đĩa mực nướng', 'Dạ, 5 phút có liền!'],
-  ['Mình gọi thêm gì không ạ?', 'Thêm 2 ly nữa nhé', 'Dạ có ngay! 🍻'],
-  ['Dạ, mình cần gì ạ?', 'Cho xin đĩa đậu phộng 🥜', 'Dạ, có liền ạ'],
-  ['Em dọn ly cũ nhé', 'Lau bàn giúp mình luôn', 'Dạ được ạ'],
-  ['Dạ, mình gọi em ạ?', 'Cho 1 chai nước suối 💧', 'Dạ, em lấy ngay'],
-  ['Món mình đây ạ', 'Cho thêm chén nước chấm', 'Dạ, có ngay ạ'],
-  ['Mình dùng thêm gì không ạ?', 'Tính tiền giúp mình', 'Dạ, em mang hoá đơn ra ạ 🧾'],
-  ['Dạ, mình cần gì ạ?', 'Cho mình xin thực đơn', 'Dạ, thực đơn đây ạ 📋'],
-  ['Bia tươi mới về đó ạ', 'Cho thử 1 ly', 'Dạ, em rót liền 🍺'],
+// service requests — nobody makes small talk with the waiter. Each order is
+// then done: 'wipe' right there, or 'fetch' `item` from the counter.
+
+/** An order: how it's taken, what Tèo then does, and what he brings (an emoji). */
+export interface WaiterOrder {
+  lines: Script;
+  task: 'fetch' | 'wipe';
+  item: string;
+}
+
+const order = (lines: Script, task: WaiterOrder['task'], item: string): WaiterOrder => ({
+  lines,
+  task,
+  item,
+});
+
+const WAITER_BAR: readonly WaiterOrder[] = [
+  order(['Mình dùng gì ạ?', 'Cho 1 ly bia hơi', 'Dạ có ngay ạ! 🍺'], 'fetch', '🍺'),
+  order(['Dạ, mình cần gì ạ?', 'Thêm ít đá giúp mình', 'Dạ, em lấy liền 🧊'], 'fetch', '🧊'),
+  order(['Hôm nay có mực nướng ạ', 'Cho một đĩa mực nướng', 'Dạ, có liền!'], 'fetch', '🦑'),
+  order(['Mình gọi thêm gì không ạ?', 'Thêm 2 ly nữa nhé', 'Dạ có ngay! 🍻'], 'fetch', '🍻'),
+  order(['Dạ, mình cần gì ạ?', 'Cho xin đĩa đậu phộng 🥜', 'Dạ, có liền ạ'], 'fetch', '🥜'),
+  order(['Em dọn ly cũ nhé', 'Lau bàn giúp mình luôn', 'Dạ được ạ'], 'wipe', '🧽'),
+  order(['Dạ, mình gọi em ạ?', 'Cho 1 chai nước suối 💧', 'Dạ, em lấy ngay'], 'fetch', '💧'),
+  order(['Dạ, mình cần gì ạ?', 'Cho mình xin thực đơn', 'Dạ, em lấy liền ạ'], 'fetch', '📋'),
+  order(['Bia tươi mới về đó ạ', 'Cho thử 1 ly', 'Dạ, em rót liền 🍺'], 'fetch', '🍺'),
+  order(['Bàn hơi dơ rồi ạ', 'Lau giúp mình cái bàn', 'Dạ, em lau ngay ạ'], 'wipe', '🧽'),
 ];
-const WAITER_GAME: readonly Script[] = [
-  ['Mình dùng gì ạ?', 'Cho 1 lon nước tăng lực ⚡', 'Dạ có ngay ạ!'],
-  ['Dạ, mình cần gì ạ?', 'Cho 1 gói snack 🍿', 'Dạ, em mang tới liền'],
-  ['Mình gọi thêm gì không ạ?', 'Cho 1 ly trà sữa 🧋', 'Dạ, trà sữa có ngay'],
-  ['Dạ, mình gọi em ạ?', 'Pha giúp mình ly mì 🍜', 'Dạ, 3 phút có liền ạ'],
-  ['Dạ, máy có vấn đề gì ạ?', 'Đổi giúp mình tai nghe khác 🎧', 'Dạ, em lấy cái mới ngay'],
-  ['Mình cần gì ạ?', 'Thêm giờ chơi giúp mình', 'Dạ, em gia hạn rồi ạ'],
-  ['Nước của mình đây ạ', 'Thêm 1 chai nước lọc nữa', 'Dạ có ngay ạ 💧'],
-  ['Dạ, mình gọi em ạ?', 'Lau bàn phím giúp mình', 'Dạ, em lau liền ạ'],
+const WAITER_GAME: readonly WaiterOrder[] = [
+  order(['Mình dùng gì ạ?', 'Cho 1 lon nước tăng lực ⚡', 'Dạ có ngay ạ!'], 'fetch', '🥤'),
+  order(['Dạ, mình cần gì ạ?', 'Cho 1 gói snack 🍿', 'Dạ, em lấy liền'], 'fetch', '🍿'),
+  order(['Mình gọi thêm gì không ạ?', 'Cho 1 ly trà sữa 🧋', 'Dạ, có ngay'], 'fetch', '🧋'),
+  order(['Dạ, mình gọi em ạ?', 'Pha giúp mình ly mì 🍜', 'Dạ, em pha liền ạ'], 'fetch', '🍜'),
+  order(
+    ['Dạ, máy có vấn đề gì ạ?', 'Đổi giúp mình tai nghe khác', 'Dạ, em lấy cái mới'],
+    'fetch',
+    '🎧',
+  ),
+  order(['Mình cần gì ạ?', 'Thêm 1 chai nước lọc', 'Dạ có ngay ạ 💧'], 'fetch', '💧'),
+  order(['Dạ, mình gọi em ạ?', 'Lau bàn phím giúp mình', 'Dạ, em lau liền ạ'], 'wipe', '⌨️'),
+  order(['Dạ, mình cần gì ạ?', 'Lau giúp mình cái màn hình', 'Dạ, em lau ngay'], 'wipe', '🖥️'),
+  order(['Mình ăn gì không ạ?', 'Cho 1 gói bim bim 🥔', 'Dạ, em lấy liền'], 'fetch', '🥔'),
 ];
-const WAITER_SOFA: readonly Script[] = [
-  ['Mình dùng gì ạ?', 'Cho 1 đĩa trái cây 🍎', 'Dạ, em gọt liền ạ'],
-  ['Dạ, mình cần gì ạ?', 'Cho thêm 1 cái gối', 'Dạ, gối đây ạ'],
-  ['Mình gọi thêm gì không ạ?', 'Cho 1 ấm trà nóng ☕', 'Dạ, có ngay ạ'],
-  ['Dạ, mình gọi em ạ?', 'Thêm nước vào ly giúp mình 💧', 'Dạ, em rót liền'],
+const WAITER_SOFA: readonly WaiterOrder[] = [
+  order(['Mình dùng gì ạ?', 'Cho 1 đĩa trái cây 🍎', 'Dạ, em gọt liền ạ'], 'fetch', '🍎'),
+  order(['Dạ, mình cần gì ạ?', 'Cho thêm 1 cái gối', 'Dạ, em lấy ngay'], 'fetch', '🛋️'),
+  order(['Mình gọi thêm gì không ạ?', 'Cho 1 ấm trà nóng ☕', 'Dạ, có ngay ạ'], 'fetch', '☕'),
+  order(['Dạ, mình gọi em ạ?', 'Thêm nước vào ly giúp mình 💧', 'Dạ, em lấy liền'], 'fetch', '💧'),
+  order(['Dạ, mình cần gì ạ?', 'Lau giúp mình cái bàn', 'Dạ, em lau liền ạ'], 'wipe', '🧽'),
 ];
+
+/** While Tèo works on an order, and while the customer waits. */
+export const WAITER_WORK = {
+  wiping: ['🧽 Lau lau...', '✨ Sắp sạch rồi ạ'],
+  preparing: (item: string) => `Đang chuẩn bị ${item}...`,
+  bringing: (item: string) => `${item} tới đây ạ!`,
+  waiting: '⏳',
+};
+
+const THANKS = [
+  'Cảm ơn Tèo nha! 🙏',
+  'Cảm ơn em nhiều!',
+  'Tèo nhanh ghê, cảm ơn nha 👍',
+  'Ok, cảm ơn Tèo! 😄',
+  'Tuyệt, cảm ơn em!',
+];
+const YOURE_WELCOME = [
+  'Dạ, chúc mình ngon miệng ạ!',
+  'Dạ không có gì ạ 😊',
+  'Cần gì cứ gọi em nha!',
+  'Dạ, mình cứ tự nhiên ạ',
+];
+
+/** Done: Tèo hands it over, the customer thanks him, he answers. */
+export function handoverLines(o: WaiterOrder): Script {
+  const done = o.task === 'wipe' ? 'Dạ, em lau sạch rồi ạ ✨' : `${o.item} của mình đây ạ!`;
+  return [done, randomOf(THANKS), randomOf(YOURE_WELCOME)];
+}
 
 // ── Rủ đi ────────────────────────────────────────────────────
 /** Where an invite goes: a beer at a bar table (two at one table), the sofa,
@@ -499,7 +547,8 @@ export function pickDialogue(
   return { lines: randomOf(BY_PLACE[place]), opener: null };
 }
 
-/** The waiter at a customer's side: drinks in the bar, snacks in the game room, fruit on the sofa. */
-export function waiterDialogue(place: ChatPlace): Script {
+/** What a customer orders from the waiter: drinks in the bar, snacks in the
+ *  game room, fruit on the sofa. */
+export function waiterOrder(place: ChatPlace): WaiterOrder {
   return randomOf(place === 'game' ? WAITER_GAME : place === 'sofa' ? WAITER_SOFA : WAITER_BAR);
 }

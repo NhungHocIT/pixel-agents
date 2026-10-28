@@ -47,11 +47,15 @@ import {
   STORY_WANDERER_DETOURS_MAX,
   STORY_WANDERER_DETOURS_MIN,
   USER_AVATAR_NAME,
+  WAITER_HOLD_SEC,
   WAITER_NAME,
   WAITER_PAUSE_MAX_SEC,
   WAITER_PAUSE_MIN_SEC,
+  WAITER_PREPARE_SEC,
   WAITER_RESERVE_SEC,
-  WAITER_SERVE_SEC,
+  WAITER_WIPE_SEC,
+  WAITER_WORK_FRAME_SEC,
+  WAITER_WORK_LINE_SEC,
   WAITING_BUBBLE_DURATION_SEC,
 } from '../../constants.js';
 import { getAnimationFrames, getCatalogEntry, getOnStateType } from '../layout/furnitureCatalog.js';
@@ -90,7 +94,14 @@ import { createPatron, isPatron, sendPatronToRest, tickPatronSchedule } from './
 import { characterNameOf, storyAnchorName, storySyncName, storyTiesOf } from './barStory.js';
 import { characterDrawOffsetPx, createCharacter, updateCharacter } from './characters.js';
 import type { ChatPlace, InviteTo } from './dialogues.js';
-import { FAREWELL, PICKLEBALL, randomOf, waiterDialogue } from './dialogues.js';
+import {
+  FAREWELL,
+  handoverLines,
+  PICKLEBALL,
+  randomOf,
+  WAITER_WORK,
+  waiterOrder,
+} from './dialogues.js';
 import type { ExerciseSession, ExerciseSlot } from './exercise.js';
 import {
   beginWorkout,
@@ -115,7 +126,7 @@ import {
 } from './pickleball.js';
 import { anchorTile, closestFreeSeat } from './seatPlacement.js';
 import type { WaiterRound } from './waiter.js';
-import { isServable, newWaiterRound, serveSpots } from './waiter.js';
+import { isServable, isWaitingOnOrder, newWaiterRound, serveSpots, workInPlace } from './waiter.js';
 import { startWalk, stepWalk } from './walking.js';
 
 /** Palettes of TNhunn (the user's avatar, owner of the agents) and the waiter —
@@ -477,7 +488,9 @@ export class OfficeState {
     return isPatron(ch) && characterNameOf(ch) === WAITER_NAME;
   }
 
-  /** The waiter's rounds: counter → a customer's side → a word with them → counter. */
+  /** The waiter's rounds: counter → a customer's side → takes the order → does
+   *  it (wipes there, or fetches it from the counter and brings it) while the
+   *  customer waits → hands it over and is thanked → counter. */
   private updateWaiter(w: Character, dt: number): void {
     w.frameTimer += dt;
     w.seatId = null;
@@ -485,6 +498,12 @@ export class OfficeState {
     w.restSpot = null;
     const r = this.waiterRound;
     r.timer -= dt;
+    const customer = r.customer;
+    // They got up (or left) before it was done: take it back to the counter
+    if (customer && r.phase !== 'toCounter' && !isServable(customer)) {
+      this.sendWaiterToCounter(w);
+      return;
+    }
     switch (r.phase) {
       case 'pause': {
         if (r.timer > 0) return;
@@ -492,26 +511,58 @@ export class OfficeState {
         return;
       }
       case 'toCustomer': {
-        const customer = r.customer;
-        if (!customer || !isServable(customer)) {
-          this.sendWaiterToCounter(w); // they got up before the drink arrived
-          return;
-        }
         stepWalk(w, dt, r.face);
         if (w.state === CharacterState.WALK) return;
-        r.phase = 'serving';
-        r.timer = WAITER_SERVE_SEC;
-        this.servedAt.set(customer, this.clockSec);
-        const busy = new Set(this.chats.flatMap((c) => c.speakers));
-        if (!busy.has(customer) && !busy.has(w)) {
-          const place = this.placeOfOne(customer);
-          this.chats.push(startChat([w, customer], waiterDialogue(place), place));
+        this.servedAt.set(customer!, this.clockSec);
+        r.order = waiterOrder(this.placeOfOne(customer!));
+        r.phase = 'ordering';
+        this.waiterChat(w, customer!, r.order.lines);
+        return;
+      }
+      case 'ordering': {
+        if (this.chats.some((c) => c.speakers.includes(w))) return;
+        if (r.order!.task === 'wipe') {
+          r.phase = 'wiping';
+          r.timer = WAITER_WIPE_SEC;
+        } else {
+          r.phase = 'fetching';
+          const home = this.waiterHomeTile(w);
+          startWalk(w, this.pathFor(w, home), Direction.DOWN);
         }
         return;
       }
-      case 'serving': {
-        const inChat = this.chats.some((c) => c.speakers.includes(w));
-        if (r.timer <= 0 && !inChat) this.sendWaiterToCounter(w);
+      case 'wiping': {
+        workInPlace(w, r.face, WAITER_WORK_FRAME_SEC);
+        const lines = WAITER_WORK.wiping;
+        w.speech = lines[Math.floor(w.frameTimer / WAITER_WORK_LINE_SEC) % lines.length];
+        if (r.timer <= 0) this.handOver(w);
+        return;
+      }
+      case 'fetching': {
+        stepWalk(w, dt, Direction.DOWN);
+        w.speech = WAITER_WORK.preparing(r.order!.item);
+        if (w.state === CharacterState.WALK) return;
+        r.phase = 'preparing';
+        r.timer = WAITER_PREPARE_SEC;
+        return;
+      }
+      case 'preparing': {
+        workInPlace(w, Direction.DOWN, WAITER_WORK_FRAME_SEC);
+        w.speech = WAITER_WORK.preparing(r.order!.item);
+        if (r.timer > 0) return;
+        r.phase = 'bringing';
+        startWalk(w, this.pathFor(w, r.spot!), r.face);
+        return;
+      }
+      case 'bringing': {
+        stepWalk(w, dt, r.face);
+        w.speech = WAITER_WORK.bringing(r.order!.item);
+        if (w.state !== CharacterState.WALK) this.handOver(w);
+        return;
+      }
+      case 'handover': {
+        if (this.chats.some((c) => c.speakers.includes(w))) return;
+        this.sendWaiterToCounter(w);
         return;
       }
       case 'toCounter': {
@@ -547,7 +598,13 @@ export class OfficeState {
           : findPath(w.tileCol, w.tileRow, spot.col, spot.row, this.tileMap, this.blockedTiles);
         if (!here && path.length === 0) continue;
         startWalk(w, path, spot.face);
-        this.waiterRound = { phase: 'toCustomer', timer: 0, customer, face: spot.face };
+        this.waiterRound = {
+          ...newWaiterRound(0),
+          phase: 'toCustomer',
+          customer,
+          spot: { col: spot.col, row: spot.row },
+          face: spot.face,
+        };
         return true;
       }
     }
@@ -555,17 +612,35 @@ export class OfficeState {
   }
 
   private sendWaiterToCounter(w: Character): void {
-    const home = this.waiterHomeTile(w);
-    const path = findPath(
-      w.tileCol,
-      w.tileRow,
-      home.col,
-      home.row,
-      this.tileMap,
-      this.blockedTiles,
+    w.speech = null;
+    startWalk(w, this.pathFor(w, this.waiterHomeTile(w)), Direction.DOWN);
+    this.waiterRound = { ...newWaiterRound(0), phase: 'toCounter' };
+  }
+
+  private pathFor(
+    ch: Character,
+    to: { col: number; row: number },
+  ): Array<{ col: number; row: number }> {
+    return findPath(ch.tileCol, ch.tileRow, to.col, to.row, this.tileMap, this.blockedTiles);
+  }
+
+  /** The waiter and a customer talk (taking the order, the thank-you): whatever
+   *  either was saying stops — the customer turns to the waiter. */
+  private waiterChat(w: Character, customer: Character, lines: readonly string[]): void {
+    this.chats = this.chats.filter(
+      (c) => !c.speakers.includes(w) && !c.speakers.includes(customer),
     );
-    startWalk(w, path, Direction.DOWN);
-    this.waiterRound = { phase: 'toCounter', timer: 0, customer: null, face: Direction.DOWN };
+    customer.speech = null;
+    this.chats.push(startChat([w, customer], lines, this.placeOfOne(customer)));
+  }
+
+  /** Done: back at the customer's side (facing them), hand it over and be thanked. */
+  private handOver(w: Character): void {
+    const r = this.waiterRound;
+    startWalk(w, [], r.face);
+    w.speech = null;
+    r.phase = 'handover';
+    this.waiterChat(w, r.customer!, handoverLines(r.order!));
   }
 
   /** Where the waiter waits: the free bar-floor tile closest to the middle of
@@ -1088,12 +1163,19 @@ export class OfficeState {
       updateExerciseChatter(this.exercise, dt);
       return;
     }
-    // Pickleball players have their own calls (tickPickleball)
-    const onCourt = new Set(this.pickleball?.players);
+    // Their own lines: pickleball players (tickPickleball); the waiter off
+    // doing an order and the customer waiting on it (updateWaiter, holdCustomer)
+    const r = this.waiterRound;
+    const waiter = this.patrons.find((p) => this.isWaiter(p));
+    const ownLines = new Set<Character>(this.pickleball?.players);
+    if (isWaitingOnOrder(r) && r.customer && waiter) ownLines.add(r.customer).add(waiter);
     const talkers = [
-      ...[...this.characters.values()].filter((ch) => !ch.matrixEffect && !onCourt.has(ch)),
-      ...this.getVisiblePatrons().filter((p) => this.gameTitle(p) === null && !onCourt.has(p)),
+      ...[...this.characters.values()].filter((ch) => !ch.matrixEffect && !ownLines.has(ch)),
+      ...this.getVisiblePatrons().filter((p) => this.gameTitle(p) === null && !ownLines.has(p)),
     ];
+    // Taking an order or being thanked, even TNhunn in League talks to the waiter
+    const atTable = r.phase === 'ordering' || r.phase === 'handover';
+    if (atTable && r.customer && !talkers.includes(r.customer)) talkers.push(r.customer);
     // The waiter only talks while serving (see updateWaiter). Drinking at one
     // table, they talk to each other across it about the beer.
     this.chats = updateChats(this.chats, talkers, characterNameOf, dt, {
@@ -1105,8 +1187,25 @@ export class OfficeState {
     });
     const talking = new Set(talkers);
     for (const ch of [...this.characters.values(), ...this.patrons]) {
-      if (!talking.has(ch) && !onCourt.has(ch)) ch.speech = null;
+      if (!talking.has(ch) && !ownLines.has(ch)) ch.speech = null;
     }
+  }
+
+  /** The customer of the waiter's order stays put until thanked: no leaving
+   *  for a patron (an agent whose work ends lingers at the table), and while
+   *  the waiter is off doing it, a still wait with an hourglass. */
+  private holdCustomer(): void {
+    const r = this.waiterRound;
+    const c = r.customer;
+    if (!c || r.phase === 'toCustomer' || r.phase === 'toCounter') return;
+    if (isPatron(c) && c.isActive) c.patronTimer = Math.max(c.patronTimer ?? 0, WAITER_HOLD_SEC);
+    if (!c.isActive && c.state === CharacterState.TYPE) {
+      c.seatTimer = Math.max(c.seatTimer, WAITER_HOLD_SEC);
+    }
+    if (!isWaitingOnOrder(r)) return;
+    c.frame = 0;
+    c.frameTimer = 0;
+    c.speech = WAITER_WORK.waiting;
   }
 
   /** Where a pair is chatting: the sofa or the game room if either is there, else the bar. */
@@ -2301,6 +2400,7 @@ export class OfficeState {
     this.tickExercise(dt);
     this.updateSofaSitting(dt);
     this.updateChat(dt);
+    this.holdCustomer();
     this.tickPickleball(dt);
 
     // ── Pet FSM ────────────────────────────────────────────────
