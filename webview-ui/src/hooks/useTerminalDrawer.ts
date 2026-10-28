@@ -3,10 +3,10 @@ import { useCallback, useEffect, useRef, useState } from 'react';
 
 import type { AgentActivity, AgentAppearance, TabStatus } from '../components/AgentCard.js';
 import {
-  TERMINAL_DRAWER_DEFAULT_WIDTH_PX,
-  TERMINAL_DRAWER_MAX_WIDTH_RATIO,
-  TERMINAL_DRAWER_MIN_WIDTH_PX,
-  TERMINAL_SIDEBAR_WIDTH_PX,
+  TERMINAL_DRAWER_DEFAULT_HEIGHT_PX,
+  TERMINAL_DRAWER_MAX_HEIGHT_RATIO,
+  TERMINAL_DRAWER_MIN_HEIGHT_PX,
+  TERMINAL_OFFICE_MIN_HEIGHT_PX,
 } from '../constants.js';
 import type { OfficeState } from '../office/engine/officeState.js';
 import type { ToolActivity } from '../office/types.js';
@@ -33,7 +33,7 @@ export interface TerminalDrawerController {
    *  mobile key bar read this one resolution. */
   shownAgentId: number | null;
   isOpen: boolean;
-  widthPx: number;
+  heightPx: number;
   /** The newest terminal the drawer saw appear (launch answered, or a reload
    *  re-announcing live sessions) — it became the active tab. `seq` makes
    *  every appearance a distinct value for effects to key on. */
@@ -56,22 +56,23 @@ export interface TerminalDrawerController {
 }
 
 /**
- * The drawer width that fits a viewport: the office keeps at least the card
- * bar's width (the cards overlay its right edge, and they are the only way to
- * switch agents), so on a narrow screen the minimum gives way to that.
+ * The drawer height that fits a viewport: the office above keeps at least
+ * TERMINAL_OFFICE_MIN_HEIGHT_PX (the agents stay visible, and the cards
+ * overlaying its right edge are the way to switch agents), so on a short
+ * window the minimum gives way to that.
  */
-export function clampDrawerWidth(preferredPx: number, viewportPx: number): number {
+export function clampDrawerHeight(preferredPx: number, viewportPx: number): number {
   const maxPx = Math.min(
-    viewportPx * TERMINAL_DRAWER_MAX_WIDTH_RATIO,
-    viewportPx - TERMINAL_SIDEBAR_WIDTH_PX,
+    viewportPx * TERMINAL_DRAWER_MAX_HEIGHT_RATIO,
+    viewportPx - TERMINAL_OFFICE_MIN_HEIGHT_PX,
   );
-  return Math.max(0, Math.min(maxPx, Math.max(TERMINAL_DRAWER_MIN_WIDTH_PX, preferredPx)));
+  return Math.max(0, Math.min(maxPx, Math.max(TERMINAL_DRAWER_MIN_HEIGHT_PX, preferredPx)));
 }
 
 /**
  * All state and derivations behind the standalone terminal panes, on both
  * shells: which tab is active (and which pane that resolves to), whether the
- * desktop panel is open, its width and drag-resize gesture, each pane's socket
+ * desktop panel is open, its height and drag-resize gesture, each pane's socket
  * state, and the per-agent lookups the cards render from. App only composes it.
  */
 export function useTerminalDrawer({
@@ -85,17 +86,17 @@ export function useTerminalDrawer({
   const [activeAgentId, setActiveAgentId] = useState<number | null>(null);
   const [lastOpened, setLastOpened] = useState<{ agentId: number; seq: number } | null>(null);
   const [isOpen, setIsOpen] = useState(false);
-  // The width the user asked for; what renders is that clamped to the
-  // viewport, re-derived on every window resize so a window that narrows
-  // while the drawer is open never pushes the office (and its cards) out.
-  const [preferredWidthPx, setPreferredWidthPx] = useState(TERMINAL_DRAWER_DEFAULT_WIDTH_PX);
-  const [viewportPx, setViewportPx] = useState(() => window.innerWidth);
+  // The height the user asked for; what renders is that clamped to the
+  // viewport, re-derived on every window resize so a window that shrinks
+  // while the drawer is open never pushes the office (and its agents) out.
+  const [preferredHeightPx, setPreferredHeightPx] = useState(TERMINAL_DRAWER_DEFAULT_HEIGHT_PX);
+  const [viewportPx, setViewportPx] = useState(() => window.innerHeight);
   useEffect(() => {
-    const onResize = () => setViewportPx(window.innerWidth);
+    const onResize = () => setViewportPx(window.innerHeight);
     window.addEventListener('resize', onResize);
     return () => window.removeEventListener('resize', onResize);
   }, []);
-  const widthPx = clampDrawerWidth(preferredWidthPx, viewportPx);
+  const heightPx = clampDrawerHeight(preferredHeightPx, viewportPx);
   const [connStatuses, setConnStatuses] = useState<Record<number, TerminalConnectionStatus>>({});
 
   const shownAgentId =
@@ -139,18 +140,18 @@ export function useTerminalDrawer({
 
   const close = useCallback(() => setIsOpen(false), []);
 
-  // Drag the panel's left edge to resize. The office region is flex-1 beside it,
-  // so it reflows to fill whatever width is left — the canvas ResizeObserver
+  // Drag the panel's top edge to resize. The office region is flex-1 above it,
+  // so it reflows to fill whatever height is left — the canvas ResizeObserver
   // repaints and re-centres the camera on the smaller region automatically.
   const onResizeStart = useCallback(
     (e: ReactMouseEvent) => {
       e.preventDefault();
-      const startX = e.clientX;
-      const startWidth = widthPx;
+      const startY = e.clientY;
+      const startHeight = heightPx;
       const onMove = (ev: MouseEvent) => {
-        // Dragging left (smaller clientX) widens the panel.
-        const next = startWidth + (startX - ev.clientX);
-        setPreferredWidthPx(clampDrawerWidth(next, window.innerWidth));
+        // Dragging up (smaller clientY) grows the panel.
+        const next = startHeight + (startY - ev.clientY);
+        setPreferredHeightPx(clampDrawerHeight(next, window.innerHeight));
       };
       const onUp = () => {
         window.removeEventListener('mousemove', onMove);
@@ -162,7 +163,7 @@ export function useTerminalDrawer({
       window.addEventListener('mousemove', onMove);
       window.addEventListener('mouseup', onUp);
     },
-    [widthPx],
+    [heightPx],
   );
 
   // A terminal tab shows the agent's character (front-facing mug shot), so it
@@ -211,7 +212,7 @@ export function useTerminalDrawer({
     shownAgentId,
     lastOpened,
     isOpen,
-    widthPx,
+    heightPx,
     reveal,
     select,
     close,

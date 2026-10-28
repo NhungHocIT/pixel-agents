@@ -28,10 +28,10 @@ interface AgentCardBarProps {
  * Pointer events pass through the empty parts so the office stays clickable
  * underneath; only the cards are interactive.
  *
- * In standalone, TerminalDrawer owns the bar and the cards double as the
- * terminal panel's tabs (the panel opens to the bar's right). In VS Code the
- * bar stands alone and lists every agent in the office, external sessions
- * included; a card click raises that agent's editor terminal via focusAgent.
+ * The bar lists every agent in the office, external sessions included. In
+ * standalone the cards double as the terminal panel's tabs (the panel docks
+ * below the office) and a card click opens that agent's cmd. In VS Code a card
+ * click raises that agent's editor terminal via focusAgent.
  */
 export function AgentCardBar({
   agentIds,

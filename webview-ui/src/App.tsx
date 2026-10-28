@@ -358,7 +358,20 @@ function App() {
     [setTerminalView, selectDrawerAgent],
   );
 
-  const { reveal: revealTerminal } = terminalDrawer;
+  // Entering an agent opens its cmd: the shell starts (or the running one is
+  // reused) and shows in the drawer — unless the user switched that agent to
+  // its Claude terminal, which then stays their pick.
+  const openAgentTerminal = useCallback(
+    (id: number) => {
+      if (terminalViews[id] === 'claude' && terminalAgentIds.includes(id)) {
+        selectDrawerAgent(id);
+      } else {
+        handleOpenShell(id);
+      }
+    },
+    [terminalViews, terminalAgentIds, selectDrawerAgent, handleOpenShell],
+  );
+
   const { showTerminal: showMobileTerminal } = mobileShell;
   const handleClick = useCallback(
     (agentId: number) => {
@@ -367,19 +380,18 @@ function App() {
       const focusId = os.terminalOwnerOf(agentId);
       transport.send({ type: 'focusAgent', id: focusId });
       // Standalone: focusAgent is a no-op server-side (there's no editor to
-      // raise a panel in), so focus is resolved here — reveal the agent's tab
+      // raise a panel in), so focus is resolved here — open the agent's cmd
       // (desktop drawer) and slide to the terminal page (mobile). A Teammate
-      // without a terminal of its own runs in its Lead's, so it reveals that
+      // without a terminal of its own runs in its Lead's, so it opens that
       // one (VS Code resolves the same way server-side).
+      if (!terminalAvailable) return;
       const leadId = os.characters.get(focusId)?.leadAgentId;
       const terminalId =
         leadId !== undefined && !drawerAgentIds.includes(focusId) ? leadId : focusId;
-      if (drawerAgentIds.includes(terminalId)) {
-        revealTerminal(terminalId);
-        if (isMobile) showMobileTerminal();
-      }
+      openAgentTerminal(terminalId);
+      if (isMobile) showMobileTerminal();
     },
-    [drawerAgentIds, isMobile, revealTerminal, showMobileTerminal],
+    [terminalAvailable, drawerAgentIds, openAgentTerminal, isMobile, showMobileTerminal],
   );
 
   // Card click when there is no terminal pane to switch (VS Code, or a
@@ -731,11 +743,11 @@ function App() {
   );
 
   return (
-    // Desktop: split view — the office region flexes to fill the space left of
-    // the terminal panel. Mobile: a column — the sliding office/terminal track
-    // on top, the agent-card bar pinned along the bottom.
+    // Desktop: a column — the office (agents) on top, flexing to fill the
+    // space above the terminal panel. Mobile: a column — the sliding
+    // office/terminal track on top, the agent-card bar pinned along the bottom.
     <div
-      className={`w-full h-full relative overflow-hidden flex ${isMobile ? 'flex-col' : ''}`}
+      className="w-full h-full relative overflow-hidden flex flex-col"
       style={
         isMobile && keyboard.clampHeight !== null ? { height: keyboard.clampHeight } : undefined
       }
@@ -758,47 +770,46 @@ function App() {
         />
       ) : (
         <>
-          {officeRegion}
+          {/* Top: the office with the agent-card bar overlaying its right edge.
+              The cards list every agent in the office, external sessions
+              included — the at-a-glance "who needs attention" strip. In
+              standalone a card click opens that agent's cmd below; otherwise
+              (VS Code, or a watch-only standalone session) it raises the
+              agent's editor terminal where there is one. */}
+          <div className="flex-1 min-h-0 flex">
+            {officeRegion}
+            {!isDebugMode && (
+              <AgentCardBar
+                agentIds={agents}
+                activeAgentId={terminalAvailable ? terminalDrawer.shownAgentId : null}
+                focusedAgentId={focusedAgentId}
+                getAppearance={terminalDrawer.getAppearance}
+                statusFor={terminalDrawer.statusFor}
+                onSelect={terminalAvailable ? openAgentTerminal : handleCardSelect}
+                onClose={handleCloseAgent}
+              />
+            )}
+          </div>
 
-          {/* Standalone with a terminal: terminalAvailable is only ever true when
-              the server reports a working PTY to a tokened session, which VS
-              Code's surface never does. In flow as a flex sibling so the office
-              region reflows beside it instead of being overlaid.
-
-              Otherwise (VS Code, or a watch-only standalone session) the card
-              bar stands alone with every agent in the office, external sessions
-              included — the at-a-glance "who needs attention" strip, with a
-              click raising the agent's editor terminal where there is one. */}
-          {terminalAvailable ? (
+          {/* Bottom: the selected agent's terminal. Standalone with a terminal
+              only: terminalAvailable is only ever true when the server reports
+              a working PTY to a tokened session, which VS Code's surface never
+              does. In flow as a flex sibling so the office region reflows
+              above it instead of being overlaid. */}
+          {terminalAvailable && (
             <TerminalDrawer
-              agentIds={drawerAgentIds}
               claudeAgentIds={terminalAgentIds}
               shellAgentIds={shellAgentIds}
               viewFor={(id) => terminalViews[id] ?? 'claude'}
               onSelectView={setTerminalView}
               onOpenShell={handleOpenShell}
               shownAgentId={terminalDrawer.shownAgentId}
-              onSelectAgent={terminalDrawer.select}
-              onCloseAgent={handleCloseAgent}
               isOpen={terminalDrawer.isOpen}
               onClosePanel={terminalDrawer.close}
-              widthPx={terminalDrawer.widthPx}
+              heightPx={terminalDrawer.heightPx}
               onResizeStart={terminalDrawer.onResizeStart}
-              getAppearance={terminalDrawer.getAppearance}
-              statusFor={terminalDrawer.statusFor}
               onStatusChange={terminalDrawer.onStatusChange}
             />
-          ) : (
-            !isDebugMode && (
-              <AgentCardBar
-                agentIds={agents}
-                focusedAgentId={focusedAgentId}
-                getAppearance={terminalDrawer.getAppearance}
-                statusFor={terminalDrawer.statusFor}
-                onSelect={handleCardSelect}
-                onClose={handleCloseAgent}
-              />
-            )
           )}
         </>
       )}

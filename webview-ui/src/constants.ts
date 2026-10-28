@@ -511,20 +511,22 @@ export const WS_RECONNECT_DELAYS_MS = [250, 500, 1_000, 2_000, 4_000] as const;
 // This file is the one place inline colors are allowed (see eslint.config.js),
 // which is why xterm's theme lives here rather than next to the component.
 
-// The panel docks on the right as a full-height column, in flow beside the
+// The panel docks along the bottom as a full-width row, in flow below the
 // office region (which flexes to fill the rest) — not overlaid on top of it.
-/** Open width the panel starts at, in px; the user can drag to resize. */
-export const TERMINAL_DRAWER_DEFAULT_WIDTH_PX = 520;
-/** Clamp for the drag: never narrower than this. */
-export const TERMINAL_DRAWER_MIN_WIDTH_PX = 320;
-/** Clamp for the drag: never wider than this fraction of the window. */
-export const TERMINAL_DRAWER_MAX_WIDTH_RATIO = 0.8;
+/** Open height the panel starts at, in px; the user can drag to resize. */
+export const TERMINAL_DRAWER_DEFAULT_HEIGHT_PX = 260;
+/** Clamp for the drag: never shorter than this. */
+export const TERMINAL_DRAWER_MIN_HEIGHT_PX = 120;
+/** Clamp for the drag: never taller than this fraction of the window. */
+export const TERMINAL_DRAWER_MAX_HEIGHT_RATIO = 0.75;
+/** The office always keeps at least this much height above the panel. */
+export const TERMINAL_OFFICE_MIN_HEIGHT_PX = 160;
 /** Width of the always-visible agent-card bar overlaying the office's right
  *  edge — fits the toggle handle and the stacked agent cards (40px mug shot +
  *  16px close/status column + card chrome ≈ 63px, plus a little air each
  *  side). */
 export const TERMINAL_SIDEBAR_WIDTH_PX = 72;
-/** Grab width of the drag handle on the panel's left edge. */
+/** Grab height of the drag handle on the panel's top edge. */
 export const TERMINAL_DRAWER_RESIZE_HANDLE_PX = 6;
 
 // Mug shot: a square crop of the agent's front-facing sprite, focused on the
