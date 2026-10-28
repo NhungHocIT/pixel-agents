@@ -32,6 +32,7 @@ import {
   WILDCARD_HOSTNAMES,
 } from './constants.js';
 import { FileStateAdapter } from './fileStateAdapter.js';
+import { startLolStatusPoller } from './lolStatus.js';
 import { claudeProvider, copyHookScript, hookProviderById } from './providers/index.js';
 import { PixelAgentsServer } from './server.js';
 import { PtySessionManager } from './terminal/ptySessionManager.js';
@@ -229,6 +230,9 @@ async function main(): Promise<void> {
   const store = new AgentStateStore();
   const adapter = new FileStateAdapter({ namespace: 'standalone' });
   store.setAdapter(adapter);
+
+  // League of Legends status for the user's avatar (TNhunn at the gaming PCs)
+  startLolStatusPoller(store);
 
   // ── Create server ──
   const server = new PixelAgentsServer();

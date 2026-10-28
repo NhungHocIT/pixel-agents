@@ -496,7 +496,17 @@ function App() {
         <>
           {/* Mobile: pinch replaces the zoom buttons, and the toolbar's
                 jobs move to the card bar (+) and the floating Settings button. */}
-          {!isMobile && <ZoomControls zoom={editor.zoom} onZoomChange={editor.handleZoomChange} />}
+          {!isMobile && (
+            <ZoomControls
+              zoom={editor.zoom}
+              onZoomChange={editor.handleZoomChange}
+              onExerciseToggle={() =>
+                officeState.isExercising()
+                  ? officeState.stopExercise()
+                  : officeState.startExercise()
+              }
+            />
+          )}
 
           {/* Vignette overlay */}
           <div

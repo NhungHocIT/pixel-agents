@@ -293,6 +293,21 @@ export function useExtensionMessages(
         return;
       }
 
+      if (msg.type === 'lolStatus') {
+        // The user's League of Legends status drives their avatar at the gaming PCs
+        os.setLolStatus({
+          phase: (msg.phase as string | null) ?? null,
+          queue: msg.queue as string | undefined,
+          champion: msg.champion as string | undefined,
+          kda: msg.kda as string | undefined,
+          lobbyMembers: msg.lobbyMembers as number | undefined,
+          lobbyMax: msg.lobbyMax as number | undefined,
+          queueSec: msg.queueSec as number | undefined,
+          gameSec: msg.gameSec as number | undefined,
+        });
+        return;
+      }
+
       if (msg.type === 'terminalAvailability') {
         setTerminalAvailable(msg.available as boolean);
         setTerminalUnavailableReason((msg.reason as string | undefined) ?? null);

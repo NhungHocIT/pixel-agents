@@ -5,7 +5,7 @@ import {
   BUBBLE_FADE_DURATION_SEC,
   BUBBLE_SITTING_OFFSET_PX,
   BUBBLE_VERTICAL_OFFSET_PX,
-  CHARACTER_SITTING_OFFSET_PX,
+  CHARACTER_NAMES,
   CONTEXT_CRITICAL_THRESHOLD,
   CONTEXT_DANGER_THRESHOLD,
   CONTEXT_GAUGE_BG,
@@ -16,18 +16,37 @@ import {
   CONTEXT_GAUGE_HEIGHT_PX,
   CONTEXT_GAUGE_WIDTH_PX,
   CONTEXT_WARN_THRESHOLD,
+  GAME_TITLE_FONT_PX,
+  GAME_TITLE_ICON_PX,
+  GAME_TITLE_LIFT_PX,
   OVERLAY_BUBBLE_Z_INDEX,
   OVERLAY_LABEL_SELECTED_Z_INDEX,
   OVERLAY_LABEL_Z_INDEX,
+  PATRON_HEART_LIFT_PX,
+  PATRON_NAME_TAG_LIFT_PX,
+  SPEECH_BG_COLOR,
+  SPEECH_FONT_PX,
+  SPEECH_HEART_CLEARANCE_PX,
+  SPEECH_LIFT_PX,
+  SPEECH_MAX_WIDTH_PX,
+  SPEECH_TEXT_COLOR,
   TEAM_LEAD_COLOR,
   TEAM_ROLE_COLOR,
   TOOL_OVERLAY_VERTICAL_OFFSET,
+  USER_AVATAR_NAME,
+  WAITER_NAME,
 } from '../../constants.js';
 import type { SubagentCharacter } from '../../hooks/useExtensionMessages.js';
+import { characterDrawOffsetPx } from '../engine/characters.js';
 import type { OfficeState } from '../engine/officeState.js';
 import { overlayProjection } from '../projection.js';
+import lolIconUrl from '../sprites/lol-icon.png';
 import { getCachedSprite } from '../sprites/spriteCache.js';
-import { BUBBLE_PERMISSION_SPRITE, BUBBLE_WAITING_SPRITE } from '../sprites/spriteData.js';
+import {
+  BUBBLE_HEART_SPRITE,
+  BUBBLE_PERMISSION_SPRITE,
+  BUBBLE_WAITING_SPRITE,
+} from '../sprites/spriteData.js';
 import type { ToolActivity } from '../types.js';
 import { CharacterState } from '../types.js';
 
@@ -36,6 +55,9 @@ import { CharacterState } from '../types.js';
 // going idle waiting on the user (Notification(idle_prompt)) additionally
 // surfaces this label. Driven by Character.waitingAwaitingInput.
 const WAITING_INPUT_ACTIVITY_TEXT = 'Waiting for input';
+/** Fallback name for a top-level Claude character whose palette has no
+ *  CHARACTER_NAMES entry (sub-agents keep their subtask label). */
+const CHARACTER_NAME = 'TNhunn';
 
 interface ToolOverlayProps {
   officeState: OfficeState;
@@ -204,7 +226,7 @@ export function ToolOverlay({
         }
 
         // Position above character
-        const sittingOffset = ch.state === CharacterState.TYPE ? CHARACTER_SITTING_OFFSET_PX : 0;
+        const sittingOffset = characterDrawOffsetPx(ch);
         const screenX = project.toScreenX(ch.x);
         const screenY = project.toScreenY(ch.y + sittingOffset - TOOL_OVERLAY_VERTICAL_OFFSET);
 
@@ -274,7 +296,9 @@ export function ToolOverlay({
         }
 
         // Team info
-        const teamRoleLabel = ch.isTeamLead ? 'LEAD' : ch.agentName || null;
+        const teamRoleLabel = ch.isTeamLead
+          ? 'LEAD'
+          : ch.agentName || (isSub ? null : (CHARACTER_NAMES[ch.palette] ?? CHARACTER_NAME));
         const hasExtraLines = !!(ch.directoryName || teamRoleLabel);
 
         // Context gauge. Every agent gets one — lead, teammate, adopted,
@@ -371,6 +395,117 @@ export function ToolOverlay({
               )}
             </div>
           </Fragment>
+        );
+      })}
+      {officeState.getVisiblePatrons().map((p) => {
+        const name = CHARACTER_NAMES[p.palette];
+        if (!name) return null;
+        const left = project.toScreenX(p.x);
+        const top =
+          project.toScreenY(p.y + characterDrawOffsetPx(p) - TOOL_OVERLAY_VERTICAL_OFFSET) +
+          PATRON_NAME_TAG_LIFT_PX;
+        const heart = (p.heartTimer ?? 0) > 0 ? getCachedSprite(BUBBLE_HEART_SPRITE, zoom) : null;
+        const gameTitle = officeState.gameTitle(p);
+        const titleTop = gameTitle ? top - GAME_TITLE_LIFT_PX : top;
+        const speech = p.speech ?? null;
+        // Speech sits over the name tag (and title); the heart goes above it all
+        const speechTop = titleTop - SPEECH_LIFT_PX;
+        const heartBase = speech ? speechTop - SPEECH_HEART_CLEARANCE_PX : titleTop;
+        return (
+          <Fragment key={`patron-${p.id}`}>
+            <span
+              className="absolute -translate-x-1/2 -translate-y-full pointer-events-none whitespace-nowrap text-2xs leading-none pixel-panel px-2"
+              style={{ left, top, zIndex: OVERLAY_LABEL_Z_INDEX, opacity: 0.85 }}
+            >
+              {name === USER_AVATAR_NAME
+                ? `👑 ${name}`
+                : name === WAITER_NAME
+                  ? `🍺 ${name}`
+                  : name}
+            </span>
+            {gameTitle && (
+              // Playing at a gaming PC: match status over the name tag
+              <span
+                className="absolute -translate-x-1/2 -translate-y-full pointer-events-none whitespace-nowrap leading-none pixel-panel px-1 flex items-center gap-2"
+                style={{
+                  left,
+                  top: titleTop,
+                  fontSize: GAME_TITLE_FONT_PX,
+                  zIndex: OVERLAY_LABEL_Z_INDEX,
+                }}
+              >
+                <img
+                  src={lolIconUrl}
+                  alt=""
+                  className="shrink-0"
+                  style={{ width: GAME_TITLE_ICON_PX, height: GAME_TITLE_ICON_PX }}
+                />
+                {gameTitle}
+              </span>
+            )}
+            {speech && (
+              // Sofa chat: what this patron is saying right now
+              <span
+                className="absolute -translate-x-1/2 -translate-y-full pointer-events-none leading-tight text-center px-3 py-1"
+                style={{
+                  left,
+                  top: speechTop,
+                  width: 'max-content',
+                  maxWidth: SPEECH_MAX_WIDTH_PX,
+                  fontSize: SPEECH_FONT_PX,
+                  color: SPEECH_TEXT_COLOR,
+                  background: SPEECH_BG_COLOR,
+                  border: `2px solid ${SPEECH_TEXT_COLOR}`,
+                  borderRadius: 6,
+                  zIndex: OVERLAY_BUBBLE_Z_INDEX,
+                }}
+              >
+                {speech}
+              </span>
+            )}
+            {heart && (
+              // Storyline couple close together: a heart floats over the name tag
+              <div
+                className="absolute -translate-x-1/2 pointer-events-none"
+                style={{
+                  left,
+                  top: heartBase - PATRON_HEART_LIFT_PX - heart.height / dpr,
+                  zIndex: OVERLAY_BUBBLE_Z_INDEX,
+                  opacity: Math.min(1, (p.heartTimer ?? 0) / BUBBLE_FADE_DURATION_SEC),
+                }}
+              >
+                <OverlayBubble cached={heart} dpr={dpr} />
+              </div>
+            )}
+          </Fragment>
+        );
+      })}
+      {[...officeState.characters.values()].map((ch) => {
+        if (!ch.speech) return null;
+        // Agents chat too: the line floats where a patron's would, over the head
+        const top =
+          project.toScreenY(ch.y + characterDrawOffsetPx(ch) - TOOL_OVERLAY_VERTICAL_OFFSET) +
+          PATRON_NAME_TAG_LIFT_PX -
+          SPEECH_LIFT_PX;
+        return (
+          <span
+            key={`speech-${ch.id}`}
+            className="absolute -translate-x-1/2 -translate-y-full pointer-events-none leading-tight text-center px-3 py-1"
+            style={{
+              left: project.toScreenX(ch.x),
+              top,
+              width: 'max-content',
+              maxWidth: SPEECH_MAX_WIDTH_PX,
+              fontSize: SPEECH_FONT_PX,
+              color: SPEECH_TEXT_COLOR,
+              background: SPEECH_BG_COLOR,
+              border: `2px solid ${SPEECH_TEXT_COLOR}`,
+              borderRadius: 6,
+              zIndex: OVERLAY_BUBBLE_Z_INDEX,
+            }}
+          >
+            {ch.speech}
+          </span>
         );
       })}
     </>

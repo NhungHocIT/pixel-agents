@@ -5,6 +5,8 @@ import {
   CAMERA_FOLLOW_SNAP_THRESHOLD,
   OFFICE_CANVAS_TEST_ID,
   PAN_MARGIN_FRACTION,
+  ZOOM_FIT_CHECK_MS,
+  ZOOM_FIT_MIN,
   ZOOM_MAX,
   ZOOM_MIN,
   ZOOM_SCROLL_THRESHOLD,
@@ -131,6 +133,41 @@ export function OfficeCanvas({
     // No ctx.scale(dpr) — we render directly in device pixels
   }, []);
 
+  // Fit the whole office in the window: the largest zoom that shows every tile,
+  // in 1/16 steps so a tile stays a whole number of device pixels (no seams).
+  // Re-chosen when the window or the office changes size; a manual zoom in
+  // between is kept.
+  useEffect(() => {
+    const container = containerRef.current;
+    if (!container) return;
+    let fitted = '';
+    const fit = () => {
+      const rect = container.getBoundingClientRect();
+      if (rect.width === 0 || rect.height === 0) return;
+      const { cols, rows } = officeState.getLayout();
+      const key = `${Math.round(rect.width)}x${Math.round(rect.height)}:${cols}x${rows}`;
+      if (key === fitted) return;
+      fitted = key;
+      const dpr = window.devicePixelRatio || 1;
+      const scale = Math.min(
+        (rect.width * dpr) / (cols * TILE_SIZE),
+        (rect.height * dpr) / (rows * TILE_SIZE),
+      );
+      const stepped = Math.floor(scale * TILE_SIZE) / TILE_SIZE;
+      panRef.current = { x: 0, y: 0 };
+      onZoomChange(Math.max(ZOOM_FIT_MIN, Math.min(ZOOM_MAX, stepped)));
+    };
+    fit();
+    const observer = new ResizeObserver(fit);
+    observer.observe(container);
+    // The layout arrives (and can be resized in the editor) after mount
+    const timer = setInterval(fit, ZOOM_FIT_CHECK_MS);
+    return () => {
+      observer.disconnect();
+      clearInterval(timer);
+    };
+  }, [officeState, onZoomChange, panRef]);
+
   useEffect(() => {
     const canvas = canvasRef.current;
     if (!canvas) return;
@@ -201,7 +238,7 @@ export function OfficeCanvas({
           h,
           officeState.tileMap,
           officeState.furniture,
-          officeState.getCharacters(),
+          officeState.getDrawnCharacters(),
           zoom,
           panRef.current.x,
           panRef.current.y,

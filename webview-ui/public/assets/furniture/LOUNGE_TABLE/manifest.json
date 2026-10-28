@@ -1,0 +1,13 @@
+{
+  "id": "LOUNGE_TABLE",
+  "name": "Lounge Coffee Table",
+  "category": "misc",
+  "type": "asset",
+  "canPlaceOnWalls": false,
+  "canPlaceOnSurfaces": false,
+  "backgroundTiles": 1,
+  "width": 128,
+  "height": 32,
+  "footprintW": 8,
+  "footprintH": 2
+}

@@ -1,7 +1,13 @@
 import {
+  CHARACTER_SITTING_OFFSET_PX,
+  CHARACTER_SLEEPING_OFFSET_PX,
   DEFAULT_MAX_CONTEXT_TOKENS,
+  DRINK_FRAME_DURATION_SEC,
+  EXERCISE_HOP_PX,
   SEAT_REST_MAX_SEC,
   SEAT_REST_MIN_SEC,
+  SLEEP_FRAME_DURATION_SEC,
+  STORY_FOLLOW_RADIUS_TILES,
   TYPE_FRAME_DURATION_SEC,
   WALK_FRAME_DURATION_SEC,
   WALK_SPEED_PX_PER_SEC,
@@ -15,6 +21,7 @@ import type { CharacterSprites } from '../sprites/spriteData.js';
 import { isReadingToolName } from '../toolUtils.js';
 import type { Character, Seat, SpriteData, TileType as TileTypeVal } from '../types.js';
 import { CharacterState, Direction, TILE_SIZE } from '../types.js';
+import { exerciseMove } from './exercise.js';
 
 /** Whether a tool should show the reading animation (vs typing). Taxonomy comes
  *  from the active HookProvider via the `providerCapabilities` message. */
@@ -76,6 +83,7 @@ export function createCharacter(
     wanderLimit: randomInt(WANDER_MOVES_BEFORE_REST_MIN, WANDER_MOVES_BEFORE_REST_MAX),
     isActive: true,
     seatId,
+    restSpot: null,
     bubbleType: null,
     bubbleTimer: 0,
     seatTimer: 0,
@@ -101,8 +109,8 @@ export function updateCharacter(
 
   switch (ch.state) {
     case CharacterState.TYPE: {
-      if (ch.frameTimer >= TYPE_FRAME_DURATION_SEC) {
-        ch.frameTimer -= TYPE_FRAME_DURATION_SEC;
+      if (ch.frameTimer >= DRINK_FRAME_DURATION_SEC) {
+        ch.frameTimer -= DRINK_FRAME_DURATION_SEC;
         ch.frame = (ch.frame + 1) % 2;
       }
       // If no longer active, stand up and start wandering (after seatTimer expires)
@@ -126,6 +134,14 @@ export function updateCharacter(
       // No idle animation — static pose
       ch.frame = 0;
       if (ch.seatTimer < 0) ch.seatTimer = 0; // clear turn-end sentinel
+      // Storyline wanderer: take a wrong turn first when heading somewhere
+      if (
+        (ch.lostDetours ?? 0) > 0 &&
+        (ch.isActive || ch.restSpot) &&
+        startDetour(ch, walkableTiles, tileMap, blockedTiles)
+      ) {
+        break;
+      }
       // If became active, pathfind to seat
       if (ch.isActive) {
         if (!ch.seatId) {
@@ -161,6 +177,30 @@ export function updateCharacter(
         }
         break;
       }
+      // Done drinking — head to the bed or gaming PC OfficeState picked
+      if (ch.restSpot) {
+        if (ch.tileCol === ch.restSpot.col && ch.tileRow === ch.restSpot.row) {
+          settleIntoRest(ch);
+          break;
+        }
+        const path = findPath(
+          ch.tileCol,
+          ch.tileRow,
+          ch.restSpot.col,
+          ch.restSpot.row,
+          tileMap,
+          blockedTiles,
+        );
+        if (path.length > 0) {
+          ch.path = path;
+          ch.moveProgress = 0;
+          ch.state = CharacterState.WALK;
+          ch.frame = 0;
+          ch.frameTimer = 0;
+          break;
+        }
+        // Unreachable spot — fall through and wander instead
+      }
       // Countdown wander timer
       ch.wanderTimer -= dt;
       if (ch.wanderTimer <= 0) {
@@ -186,8 +226,18 @@ export function updateCharacter(
             }
           }
         }
-        if (walkableTiles.length > 0) {
-          const target = walkableTiles[Math.floor(Math.random() * walkableTiles.length)];
+        // Storyline followers keep close to their leader
+        const anchor = ch.wanderAnchor;
+        const near = anchor
+          ? walkableTiles.filter(
+              (t) =>
+                Math.abs(t.col - anchor.col) + Math.abs(t.row - anchor.row) <=
+                STORY_FOLLOW_RADIUS_TILES,
+            )
+          : [];
+        const pool = near.length > 0 ? near : walkableTiles;
+        if (pool.length > 0) {
+          const target = pool[Math.floor(Math.random() * pool.length)];
           const path = findPath(
             ch.tileCol,
             ch.tileRow,
@@ -223,6 +273,15 @@ export function updateCharacter(
         ch.x = center.x;
         ch.y = center.y;
 
+        // A wrong turn done — stop, look around; IDLE takes the next one or the real route
+        if ((ch.lostDetours ?? 0) > 0) {
+          ch.lostDetours = (ch.lostDetours ?? 1) - 1;
+          ch.state = CharacterState.IDLE;
+          ch.frame = 0;
+          ch.frameTimer = 0;
+          break;
+        }
+
         if (ch.isActive) {
           if (!ch.seatId) {
             // No seat — type in place
@@ -237,6 +296,10 @@ export function updateCharacter(
             }
           }
         } else {
+          if (ch.restSpot && ch.tileCol === ch.restSpot.col && ch.tileRow === ch.restSpot.row) {
+            settleIntoRest(ch);
+            break;
+          }
           // Check if arrived at assigned seat — sit down for a rest before wandering again
           if (ch.seatId) {
             const seat = seats.get(ch.seatId);
@@ -290,8 +353,8 @@ export function updateCharacter(
         ch.moveProgress = 0;
       }
 
-      // If became active while wandering, repath to seat
-      if (ch.isActive && ch.seatId) {
+      // If became active while wandering, repath to seat (not mid wrong turn)
+      if (ch.isActive && ch.seatId && !((ch.lostDetours ?? 0) > 0)) {
         const seat = seats.get(ch.seatId);
         if (seat) {
           const lastStep = ch.path[ch.path.length - 1];
@@ -313,6 +376,99 @@ export function updateCharacter(
       }
       break;
     }
+
+    case CharacterState.SLEEP: {
+      if (ch.frameTimer >= SLEEP_FRAME_DURATION_SEC) {
+        ch.frameTimer -= SLEEP_FRAME_DURATION_SEC;
+        ch.frame = (ch.frame + 1) % 2;
+      }
+      // New work, or the bed was taken back — get up; IDLE paths back to the seat
+      if (ch.isActive || !ch.restSpot) {
+        ch.state = CharacterState.IDLE;
+        ch.frame = 0;
+        ch.frameTimer = 0;
+      }
+      break;
+    }
+
+    case CharacterState.GAME: {
+      if (ch.frameTimer >= TYPE_FRAME_DURATION_SEC) {
+        ch.frameTimer -= TYPE_FRAME_DURATION_SEC;
+        ch.frame = (ch.frame + 1) % 2;
+      }
+      if (ch.isActive || !ch.restSpot) {
+        ch.state = CharacterState.IDLE;
+        ch.frame = 0;
+        ch.frameTimer = 0;
+      }
+      break;
+    }
+  }
+}
+
+/** Walk to a random tile instead of the destination (a wanderer's wrong turn).
+ *  Returns false — and drops the remaining wrong turns — if no tile is reachable. */
+function startDetour(
+  ch: Character,
+  walkableTiles: Array<{ col: number; row: number }>,
+  tileMap: TileTypeVal[][],
+  blockedTiles: Set<string>,
+): boolean {
+  for (let attempt = 0; attempt < 5 && walkableTiles.length > 0; attempt++) {
+    const target = walkableTiles[Math.floor(Math.random() * walkableTiles.length)];
+    const path = findPath(ch.tileCol, ch.tileRow, target.col, target.row, tileMap, blockedTiles);
+    if (path.length > 0) {
+      ch.path = path;
+      ch.moveProgress = 0;
+      ch.state = CharacterState.WALK;
+      ch.frame = 0;
+      ch.frameTimer = 0;
+      return true;
+    }
+  }
+  ch.lostDetours = 0;
+  return false;
+}
+
+/** Arrived at the rest spot: lie down in bed, or sit facing the gaming PC (desk above). */
+function settleIntoRest(ch: Character): void {
+  ch.state = ch.restSpot?.kind === 'game' ? CharacterState.GAME : CharacterState.SLEEP;
+  ch.dir = ch.restSpot?.kind === 'game' ? Direction.UP : Direction.DOWN;
+  ch.path = [];
+  ch.frame = 0;
+  ch.frameTimer = 0;
+}
+
+/** Vertical draw offset (sprite px) for the character's pose: seated, in bed, or standing. */
+export function characterDrawOffsetPx(ch: Character): number {
+  if (ch.state === CharacterState.TYPE || ch.state === CharacterState.GAME) {
+    return CHARACTER_SITTING_OFFSET_PX;
+  }
+  if (ch.state === CharacterState.SLEEP) return CHARACTER_SLEEPING_OFFSET_PX;
+  if (ch.state === CharacterState.EXERCISE) {
+    // Jumping jacks lift off on the up beat; squats drop into the seated pose
+    const { move, beat } = exerciseMove(ch);
+    if (move === 'jump' && beat % 2 === 0) return -EXERCISE_HOP_PX;
+    if (move === 'squat' && beat % 2 === 1) return CHARACTER_SITTING_OFFSET_PX;
+  }
+  return 0;
+}
+
+/** Exercise break: jumping jacks, waist twists, squats, marching in place. */
+function exerciseSprite(ch: Character, sprites: CharacterSprites): SpriteData {
+  const { move, beat } = exerciseMove(ch);
+  const up = beat % 2 === 0;
+  // The line faces front (down); the coach faces the line
+  const face = ch.dir === Direction.UP ? Direction.UP : Direction.DOWN;
+  switch (move) {
+    case 'jump':
+      return sprites.walk[face][up ? 0 : 1];
+    case 'twist':
+      return sprites.walk[up ? Direction.LEFT : Direction.RIGHT][1];
+    case 'squat':
+      return up ? sprites.walk[face][1] : sprites.typing[face][0];
+    case 'march':
+      return sprites.walk[face][beat % 4];
   }
 }
 
@@ -320,12 +476,26 @@ export function updateCharacter(
 export function getCharacterSprite(ch: Character, sprites: CharacterSprites): SpriteData {
   switch (ch.state) {
     case CharacterState.TYPE:
-      if (isReadingTool(ch.currentTool)) {
-        return sprites.reading[ch.dir][ch.frame % 2];
+      // Sofa: sit with empty hands, or sip water from the glass off the table
+      if (ch.onSofa) {
+        return ch.sipping ? sprites.waterSip[ch.dir][ch.frame % 2] : sprites.typing[ch.dir][1];
       }
+      // Beer only in the bar; anywhere else work looks like work again
+      if (ch.noBeer) {
+        return isReadingTool(ch.currentTool)
+          ? sprites.reading[ch.dir][ch.frame % 2]
+          : sprites.typing[ch.dir][ch.frame % 2];
+      }
+      // Bar theme: every tool is a sip of beer
+      return sprites.drinking[ch.dir][ch.frame % 2];
+    case CharacterState.SLEEP:
+      return sprites.sleeping[ch.frame % 2];
+    case CharacterState.GAME:
       return sprites.typing[ch.dir][ch.frame % 2];
     case CharacterState.WALK:
       return sprites.walk[ch.dir][ch.frame % 4];
+    case CharacterState.EXERCISE:
+      return exerciseSprite(ch, sprites);
     case CharacterState.IDLE:
       return sprites.walk[ch.dir][1];
     default:

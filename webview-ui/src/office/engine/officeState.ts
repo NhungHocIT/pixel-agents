@@ -2,18 +2,49 @@ import { pickDiversePalette } from '../../../../core/src/paletteUtils.js';
 import {
   AUTO_ON_FACING_DEPTH,
   AUTO_ON_SIDE_DEPTH,
+  BAR_PATRONS_ENABLED,
+  BED_FURNITURE_TYPE,
+  BOSS_VISIT_MAX_SEC,
+  BOSS_VISIT_MIN_SEC,
   CHARACTER_HIT_HALF_WIDTH,
   CHARACTER_HIT_HEIGHT,
-  CHARACTER_SITTING_OFFSET_PX,
+  CHARACTER_NAMES,
   DISMISS_BUBBLE_FAST_FADE_SEC,
+  EXERCISE_GATHER_MAX_SEC,
+  EXERCISE_INTERVAL_MS,
+  EXERCISE_WORKOUT_SEC,
   FURNITURE_ANIM_INTERVAL_SEC,
+  GAMING_CHAIR_FURNITURE_TYPE,
   GREETER_ID,
   GREETER_TILE_MARGIN,
   INACTIVE_SEAT_TIMER_MIN_SEC,
   INACTIVE_SEAT_TIMER_RANGE_SEC,
+  LOUNGE_PLATE_GAP_PX,
+  LOUNGE_TABLE_FURNITURE_TYPE,
+  LOUNGE_TABLE_TOP_PX,
   MAX_PET_ID_LENGTH,
+  PATRON_SEAT_RETRY_SEC,
   PET_HIT_HALF_WIDTH,
   PET_HIT_HEIGHT,
+  SOFA_FURNITURE_PREFIX,
+  SOFA_GLASS_RETRY_SEC,
+  SOFA_SEAT_PREFERENCE,
+  SOFA_SIP_GAP_MAX_SEC,
+  SOFA_SIP_GAP_MIN_SEC,
+  SOFA_SIP_SEC,
+  STORY_HEART_COOLDOWN_MAX_SEC,
+  STORY_HEART_COOLDOWN_MIN_SEC,
+  STORY_HEART_RANGE_TILES,
+  STORY_HEART_SHOW_SEC,
+  STORY_SYNC_DELAY_SEC,
+  STORY_WANDERER_DETOURS_MAX,
+  STORY_WANDERER_DETOURS_MIN,
+  USER_AVATAR_NAME,
+  WAITER_NAME,
+  WAITER_PAUSE_MAX_SEC,
+  WAITER_PAUSE_MIN_SEC,
+  WAITER_RESERVE_SEC,
+  WAITER_SERVE_SEC,
   WAITING_BUBBLE_DURATION_SEC,
 } from '../../constants.js';
 import { getAnimationFrames, getCatalogEntry, getOnStateType } from '../layout/furnitureCatalog.js';
@@ -25,6 +56,13 @@ import {
   layoutToTileMap,
 } from '../layout/layoutSerializer.js';
 import { findPath, getWalkableTiles, isWalkable } from '../layout/tileMap.js';
+import {
+  FRUIT_PLATE_LEFT,
+  FRUIT_PLATE_RIGHT,
+  ROUND_TRAY,
+  TABLE_GLASS,
+  TRAY_GLASS_OFFSETS,
+} from '../sprites/barSprites.js';
 import { getPetCount, getPetName } from '../sprites/petSpriteData.js';
 import { getLoadedCharacterCount } from '../sprites/spriteData.js';
 import type {
@@ -34,14 +72,39 @@ import type {
   Pet,
   PlacedFurniture,
   PlacedPet,
+  RestSpot,
   Seat,
   TileType as TileTypeVal,
 } from '../types.js';
 import { CharacterState, Direction, PetState, TILE_SIZE } from '../types.js';
-import { createCharacter, updateCharacter } from './characters.js';
+import type { BarChat } from './barChat.js';
+import { startChat, updateChats } from './barChat.js';
+import { createPatron, isPatron, sendPatronToRest, tickPatronSchedule } from './barPatrons.js';
+import { characterNameOf, storyAnchorName, storySyncName, storyTiesOf } from './barStory.js';
+import { characterDrawOffsetPx, createCharacter, updateCharacter } from './characters.js';
+import type { ExerciseSession } from './exercise.js';
+import {
+  beginWorkout,
+  endWorkout,
+  joinExercise,
+  pickLineSlots,
+  updateExerciseChatter,
+  updateExerciser,
+} from './exercise.js';
+import type { LolStatus } from './lolStatus.js';
+import { lolTitle } from './lolStatus.js';
 import { advanceMatrixEffect, startMatrixEffect } from './matrixEffectState.js';
 import { createPet, updatePet } from './petEntity.js';
 import { anchorTile, closestFreeSeat } from './seatPlacement.js';
+import type { WaiterRound } from './waiter.js';
+import { isServable, newWaiterRound, serveSpots, serviceLines } from './waiter.js';
+import { startWalk, stepWalk } from './walking.js';
+
+/** Palettes of the staff — the boss (the user's avatar) and the waiter —
+ *  never given to an agent. */
+const STAFF_PALETTES = new Set(
+  [USER_AVATAR_NAME, WAITER_NAME].map((n) => CHARACTER_NAMES.indexOf(n)).filter((i) => i >= 0),
+);
 
 /** Internal helper: facing-tile coords for a seat. Returns null for invalid direction. */
 function seatFacingOffset(direction: Direction): { dCol: number; dRow: number } {
@@ -117,6 +180,19 @@ export class OfficeState {
    *  overlay's per-frame updates stop re-centering. Reset on spawn/despawn. */
   private greeterCameraCancelled = false;
 
+  /** The exercise break in progress, and when (wall clock) the next one starts. */
+  private exercise: ExerciseSession | null = null;
+  private nextExerciseAt = Date.now() + EXERCISE_INTERVAL_MS;
+  /** The boss's rounds: whose desk they are hanging around, and for how long. */
+  private bossVisitId: number | null = null;
+  private bossVisitTimer = 0;
+  /** The waiter's current round, where they wait between rounds (lazily
+   *  picked: by the bar seats), and when (sim seconds) each customer was last served. */
+  private waiterRound: WaiterRound = newWaiterRound(WAITER_PAUSE_MIN_SEC);
+  private waiterHome: { col: number; row: number } | null = null;
+  private servedAt = new Map<Character, number>();
+  private clockSec = 0;
+
   setAreaMappings(mappings: Record<string, string[]>): void {
     this.areaMappings = mappings;
   }
@@ -128,6 +204,7 @@ export class OfficeState {
     this.blockedTiles = getBlockedTiles(this.layout.furniture);
     this.furniture = layoutToFurnitureInstances(this.layout.furniture);
     this.walkableTiles = getWalkableTiles(this.tileMap, this.blockedTiles);
+    this.rebuildRestSpots();
     // Pets are built last because they need walkableTiles populated for spawn.
     this.rebuildPetsFromLayout(this.layout);
   }
@@ -135,12 +212,16 @@ export class OfficeState {
   /** Rebuild all derived state from a new layout. Reassigns existing characters.
    *  @param shift Optional pixel shift to apply when grid expands left/up */
   rebuildFromLayout(layout: OfficeLayout, shift?: { col: number; row: number }): void {
+    this.stopExercise(); // the line was laid out on the old floor
+    this.waiterHome = null;
+    this.waiterRound = newWaiterRound(WAITER_PAUSE_MIN_SEC);
     this.layout = layout;
     this.tileMap = layoutToTileMap(layout);
     this.seats = layoutToSeats(layout.furniture);
     this.blockedTiles = getBlockedTiles(layout.furniture);
-    this.rebuildFurnitureInstances();
     this.walkableTiles = getWalkableTiles(this.tileMap, this.blockedTiles);
+    this.rebuildRestSpots();
+    this.rebuildFurnitureInstances();
 
     // Shift character positions when grid expands left/up
     if (shift && (shift.col !== 0 || shift.row !== 0)) {
@@ -246,6 +327,18 @@ export class OfficeState {
       }
     }
 
+    // Patrons off the map or on a now-blocked tile start over somewhere walkable
+    for (const p of this.patrons) {
+      const offMap =
+        p.tileCol < 0 || p.tileCol >= layout.cols || p.tileRow < 0 || p.tileRow >= layout.rows;
+      if (offMap || (shift && (shift.col !== 0 || shift.row !== 0))) {
+        sendPatronToRest(p, PATRON_SEAT_RETRY_SEC);
+        p.restSpot = null;
+        p.state = CharacterState.IDLE;
+        this.relocateCharacterToWalkable(p);
+      }
+    }
+
     // Reconcile pets against the layout roster (handles editor add/remove)
     this.rebuildPetsFromLayout(layout);
   }
@@ -280,6 +373,558 @@ export class OfficeState {
     if (key) this.blockedTiles.delete(key);
     const result = fn();
     if (key) this.blockedTiles.add(key);
+    return result;
+  }
+
+  /** Rest spots: every tile of every bed's lower row (a double bed sleeps two)
+   *  and every gaming chair. */
+  private restSpots: RestSpot[] = [];
+
+  /** Non-agent bar patrons, one per loaded character sprite. Drawn, never
+   *  selectable, never persisted; they yield seats and rest spots to agents. */
+  private patrons: Character[] = [];
+
+  /** The user's League of Legends status (server `lolStatus`), and when it arrived. */
+  private lolStatus: LolStatus = { phase: null };
+  private lolStatusAt = 0;
+
+  setLolStatus(status: LolStatus): void {
+    this.lolStatus = status;
+    this.lolStatusAt = Date.now();
+  }
+
+  private userInLeague(): boolean {
+    return this.lolStatus.phase !== null;
+  }
+
+  private isUserAvatar(ch: Character): boolean {
+    return isPatron(ch) && characterNameOf(ch) === USER_AVATAR_NAME;
+  }
+
+  /** Title over the user's avatar while it plays at a gaming PC: their real
+   *  League status. Nobody else gets one. */
+  gameTitle(ch: Character): string | null {
+    if (ch.state !== CharacterState.GAME || !this.isUserAvatar(ch) || !this.userInLeague()) {
+      return null;
+    }
+    return lolTitle(this.lolStatus, (Date.now() - this.lolStatusAt) / 1000);
+  }
+
+  /** While the user is in League their avatar sits at a gaming PC (bumping a
+   *  patron if they are all taken) and stays there; otherwise it leaves them. */
+  private steerUserAvatar(p: Character): void {
+    if (!this.userInLeague()) {
+      if (p.restSpot?.kind === 'game') p.restSpot = null;
+      return;
+    }
+    if (p.isActive || p.seatId) sendPatronToRest(p, PATRON_SEAT_RETRY_SEC);
+    p.patronTimer = Math.max(p.patronTimer ?? 0, PATRON_SEAT_RETRY_SEC);
+    if (p.restSpot?.kind === 'game') return;
+    const holders = [...this.characters.values(), ...this.patrons];
+    const holderOf = (s: RestSpot) => holders.find((o) => o.restSpot && sameSpot(o.restSpot, s));
+    const games = this.restSpots.filter((s) => s.kind === 'game');
+    const dist = (s: RestSpot) => Math.abs(s.col - p.tileCol) + Math.abs(s.row - p.tileRow);
+    const pick =
+      games.filter((s) => !holderOf(s)).sort((a, b) => dist(a) - dist(b))[0] ??
+      games.find((s) => {
+        const o = holderOf(s);
+        return o !== undefined && isPatron(o);
+      });
+    if (!pick) return;
+    const bumped = holderOf(pick);
+    if (bumped) bumped.restSpot = null; // its FSM gets up and wanders
+    p.restSpot = { ...pick };
+  }
+
+  /** Not in League, the boss walks the floor: hangs around one agent's desk
+   *  for a while (chatting with whoever is near), then moves on to the next. */
+  private steerBossRounds(p: Character, dt: number): void {
+    if (p.restSpot) return; // at a gaming PC, in League
+    this.bossVisitTimer -= dt;
+    let target = this.bossVisitId !== null ? this.characters.get(this.bossVisitId) : undefined;
+    if (!target || this.bossVisitTimer <= 0) {
+      const agents = [...this.characters.values()].filter((c) => !c.matrixEffect);
+      target = agents[Math.floor(Math.random() * agents.length)];
+      this.bossVisitId = target?.id ?? null;
+      this.bossVisitTimer = randomBetween(BOSS_VISIT_MIN_SEC, BOSS_VISIT_MAX_SEC);
+    }
+    p.wanderAnchor = target ? { col: target.tileCol, row: target.tileRow } : null;
+  }
+
+  private isWaiter(ch: Character): boolean {
+    return isPatron(ch) && characterNameOf(ch) === WAITER_NAME;
+  }
+
+  /** The waiter's rounds: counter → a customer's side → a word with them → counter. */
+  private updateWaiter(w: Character, dt: number): void {
+    w.frameTimer += dt;
+    w.seatId = null;
+    w.isActive = false;
+    w.restSpot = null;
+    const r = this.waiterRound;
+    r.timer -= dt;
+    switch (r.phase) {
+      case 'pause': {
+        if (r.timer > 0) return;
+        if (!this.sendWaiterToCustomer(w)) r.timer = WAITER_PAUSE_MIN_SEC;
+        return;
+      }
+      case 'toCustomer': {
+        const customer = r.customer;
+        if (!customer || !isServable(customer)) {
+          this.sendWaiterToCounter(w); // they got up before the drink arrived
+          return;
+        }
+        stepWalk(w, dt, r.face);
+        if (w.state === CharacterState.WALK) return;
+        r.phase = 'serving';
+        r.timer = WAITER_SERVE_SEC;
+        this.servedAt.set(customer, this.clockSec);
+        const busy = new Set(this.chats.flatMap((c) => c.speakers));
+        if (!busy.has(customer) && !busy.has(w)) {
+          this.chats.push(startChat([w, customer], serviceLines(customer)));
+        }
+        return;
+      }
+      case 'serving': {
+        const inChat = this.chats.some((c) => c.speakers.includes(w));
+        if (r.timer <= 0 && !inChat) this.sendWaiterToCounter(w);
+        return;
+      }
+      case 'toCounter': {
+        stepWalk(w, dt, Direction.DOWN);
+        if (w.state === CharacterState.WALK) return;
+        this.waiterRound = newWaiterRound(
+          randomBetween(WAITER_PAUSE_MIN_SEC, WAITER_PAUSE_MAX_SEC),
+        );
+        return;
+      }
+    }
+  }
+
+  /** Pick someone seated (bar) or gaming (game room) not served lately, and
+   *  walk to a free tile beside them. False if there is nobody to serve. */
+  private sendWaiterToCustomer(w: Character): boolean {
+    const due = this.getDrawnCharacters().filter(
+      (c) =>
+        c !== w &&
+        isServable(c) &&
+        this.clockSec - (this.servedAt.get(c) ?? -Infinity) > WAITER_RESERVE_SEC,
+    );
+    for (let i = due.length - 1; i > 0; i--) {
+      const j = Math.floor(Math.random() * (i + 1));
+      [due[i], due[j]] = [due[j], due[i]];
+    }
+    for (const customer of due.slice(0, 6)) {
+      for (const spot of serveSpots(customer)) {
+        if (!isWalkable(spot.col, spot.row, this.tileMap, this.blockedTiles)) continue;
+        const here = w.tileCol === spot.col && w.tileRow === spot.row;
+        const path = here
+          ? []
+          : findPath(w.tileCol, w.tileRow, spot.col, spot.row, this.tileMap, this.blockedTiles);
+        if (!here && path.length === 0) continue;
+        startWalk(w, path, spot.face);
+        this.waiterRound = { phase: 'toCustomer', timer: 0, customer, face: spot.face };
+        return true;
+      }
+    }
+    return false;
+  }
+
+  private sendWaiterToCounter(w: Character): void {
+    const home = this.waiterHomeTile(w);
+    const path = findPath(
+      w.tileCol,
+      w.tileRow,
+      home.col,
+      home.row,
+      this.tileMap,
+      this.blockedTiles,
+    );
+    startWalk(w, path, Direction.DOWN);
+    this.waiterRound = { phase: 'toCounter', timer: 0, customer: null, face: Direction.DOWN };
+  }
+
+  /** Where the waiter waits: the free bar-floor tile closest to the middle of
+   *  the bar seats (any free tile if the map has no bar). */
+  private waiterHomeTile(w: Character): { col: number; row: number } {
+    if (this.waiterHome) return this.waiterHome;
+    const onBar = (col: number, row: number) => this.beerFloors.has(this.tileMap[row]?.[col]);
+    const barSeats = [...this.seats.values()].filter((s) => onBar(s.seatCol, s.seatRow));
+    const tiles = this.walkableTiles.filter((t) => onBar(t.col, t.row));
+    const pool = tiles.length > 0 ? tiles : this.walkableTiles;
+    if (pool.length === 0) return { col: w.tileCol, row: w.tileRow };
+    const mid =
+      barSeats.length > 0
+        ? {
+            col: barSeats.reduce((a, s) => a + s.seatCol, 0) / barSeats.length,
+            row: barSeats.reduce((a, s) => a + s.seatRow, 0) / barSeats.length,
+          }
+        : { col: w.tileCol, row: w.tileRow };
+    const dist = (t: { col: number; row: number }) =>
+      Math.abs(t.col - mid.col) + Math.abs(t.row - mid.row);
+    this.waiterHome = [...pool].sort((a, b) => dist(a) - dist(b))[0];
+    return this.waiterHome;
+  }
+
+  /** Uids of the sofa pieces; the lounge table setting (tray, fruit plates)
+   *  and where each glass stands on the tray; and the chats running anywhere
+   *  on the map. */
+  private sofaUids = new Set<string>();
+  private tableDecor: FurnitureInstance[] = [];
+  private glassSlots: Array<{ x: number; y: number; zY: number }> = [];
+  /** Floor types where characters drink beer (the bar room). */
+  private beerFloors = new Set<TileTypeVal | undefined>();
+  private chats: BarChat[] = [];
+
+  private rebuildRestSpots(): void {
+    this.restSpots = [];
+    this.sofaUids = new Set(
+      this.layout.furniture
+        .filter((f) => f.type.startsWith(SOFA_FURNITURE_PREFIX))
+        .map((f) => f.uid),
+    );
+    this.rebuildTableSetting();
+    // Beer belongs to the bar: the floors its (non-sofa) seats stand on
+    this.beerFloors = new Set(
+      [...this.seats.values()]
+        .filter((s) => !this.isSofaSeat(s.uid))
+        .map((s) => this.tileMap[s.seatRow]?.[s.seatCol]),
+    );
+    for (const item of this.layout.furniture) {
+      if (item.type === BED_FURNITURE_TYPE) {
+        const entry = getCatalogEntry(item.type);
+        const footprintW = entry?.footprintW ?? 1;
+        const footprintH = entry?.footprintH ?? 2;
+        for (let dc = 0; dc < footprintW; dc++) {
+          this.restSpots.push({
+            col: item.col + dc,
+            row: item.row + footprintH - 1,
+            kind: 'bed',
+            bed: item.uid,
+          });
+        }
+      } else if (item.type === GAMING_CHAIR_FURNITURE_TYPE) {
+        this.restSpots.push({ col: item.col, row: item.row, kind: 'game' });
+      }
+    }
+    // Drop assignments to spots that no longer exist
+    for (const ch of [...this.characters.values(), ...this.patrons]) {
+      const spot = ch.restSpot;
+      if (spot && !this.restSpots.some((s) => sameSpot(s, spot))) ch.restSpot = null;
+    }
+  }
+
+  /** Give a finished agent (or resting patron) a free bed or gaming PC; take it
+   *  back once the character is up and off it. Agents bump patrons when full. */
+  private updateRestAssignment(ch: Character): void {
+    if (ch.isSubagent) return;
+    // The boss never naps on the job: a gaming PC only via steerUserAvatar
+    if (this.isUserAvatar(ch)) return;
+    if (ch.isActive) {
+      const spot = ch.restSpot;
+      if (spot && (ch.tileCol !== spot.col || ch.tileRow !== spot.row)) ch.restSpot = null;
+      return;
+    }
+    if (ch.restSpot || this.restSpots.length === 0) return;
+    const holders = [...this.characters.values(), ...this.patrons];
+    const taken = (s: RestSpot) => holders.some((o) => o.restSpot && sameSpot(o.restSpot, s));
+    // The user's avatar plays only while the user really is in League (steerUserAvatar)
+    let free = this.restSpots.filter(
+      (s) => !taken(s) && !(s.kind === 'game' && this.isUserAvatar(ch)),
+    );
+    if (free.length === 0) {
+      if (isPatron(ch)) return;
+      const bumped = this.patrons.find(
+        (p) => p.restSpot && !(this.isUserAvatar(p) && this.userInLeague()),
+      );
+      if (!bumped) return;
+      ch.restSpot = bumped.restSpot!;
+      bumped.restSpot = null; // its FSM gets up and wanders
+      return;
+    }
+    const holderOf = (s: RestSpot) => holders.find((o) => o.restSpot && sameSpot(o.restSpot, s));
+    const coupled = (o: Character) => storyTiesOf(characterNameOf(o)).partner !== null;
+    const otherHalves = (s: RestSpot) =>
+      this.restSpots.filter((h) => h.bed !== undefined && h.bed === s.bed && !sameSpot(h, s));
+    // Storyline: couples always sleep together in one double bed
+    if (isPatron(ch) && coupled(ch)) {
+      const partner = this.storyAnchor(ch);
+      const beds = free.filter((s) => s.kind === 'bed');
+      const pick =
+        beds.find((s) => partner && otherHalves(s).some((h) => holderOf(h) === partner)) ??
+        beds.find((s) => otherHalves(s).every((h) => !taken(h)));
+      if (pick) {
+        ch.restSpot = { ...pick };
+        return;
+      }
+    }
+    // Everyone else leaves the empty half of a couple's bed alone
+    const besideCouple = (s: RestSpot) =>
+      otherHalves(s).some((h) => {
+        const o = holderOf(h);
+        return o !== undefined && coupled(o);
+      });
+    if (!coupled(ch) && free.some((s) => !besideCouple(s))) {
+      free = free.filter((s) => !besideCouple(s));
+    }
+    // Storyline: rest beside the partner / buddy / leader when they are resting
+    const anchorSpot = isPatron(ch) ? this.storyAnchor(ch)?.restSpot : null;
+    // Otherwise sleep or play, at random, then the nearest free spot of that kind
+    const kinds = [...new Set(free.map((s) => s.kind))];
+    const kind =
+      anchorSpot && kinds.includes(anchorSpot.kind)
+        ? anchorSpot.kind
+        : kinds[Math.floor(Math.random() * kinds.length)];
+    const from = anchorSpot ?? { col: ch.tileCol, row: ch.tileRow };
+    const dist = (s: RestSpot) => Math.abs(s.col - from.col) + Math.abs(s.row - from.row);
+    const pick = free.filter((s) => s.kind === kind).sort((a, b) => dist(a) - dist(b))[0];
+    ch.restSpot = { ...pick };
+    if (isPatron(ch) && storyTiesOf(characterNameOf(ch)).wanderer) this.getLost(ch);
+  }
+
+  /** A free bar seat for a patron: not an agent's, not another patron's.
+   *  Storyline ties pick the free seat nearest the partner / buddy / leader. */
+  private pickPatronSeat(p: Character): string | null {
+    if (this.isUserAvatar(p)) return null; // the boss doesn't sit down for a drink
+    const used = new Set(this.patrons.filter((o) => o !== p && o.seatId).map((o) => o.seatId));
+    const free = [...this.seats.values()].filter((s) => !s.assigned && !used.has(s.uid));
+    if (free.length === 0) return null;
+    const anchorSeatId = this.storyAnchor(p)?.seatId;
+    const anchorSeat = anchorSeatId ? this.seats.get(anchorSeatId) : undefined;
+    if (anchorSeat) {
+      const dist = (s: Seat) =>
+        Math.abs(s.seatCol - anchorSeat.seatCol) + Math.abs(s.seatRow - anchorSeat.seatRow);
+      return free.sort((a, b) => dist(a) - dist(b))[0].uid;
+    }
+    // Often head for the lounge sofa, where patrons chat
+    const sofa = free.filter((s) => this.isSofaSeat(s.uid));
+    const pool = sofa.length > 0 && Math.random() < SOFA_SEAT_PREFERENCE ? sofa : free;
+    return pool[Math.floor(Math.random() * pool.length)].uid;
+  }
+
+  /** Seat uids are the chair uid, or `uid:N` for the extra seats of a multi-seat piece. */
+  private isSofaSeat(seatUid: string): boolean {
+    return this.sofaUids.has(seatUid.split(':')[0]);
+  }
+
+  /** Lounge table setting: a round tray of water glasses in the middle of each
+   *  lounge table, a plate of fruit on either side. World pixels; the glasses
+   *  stand on the tray, the tray and plates on the table. */
+  private rebuildTableSetting(): void {
+    this.tableDecor = [];
+    this.glassSlots = [];
+    for (const item of this.layout.furniture) {
+      if (item.type !== LOUNGE_TABLE_FURNITURE_TYPE) continue;
+      const entry = getCatalogEntry(item.type);
+      const centerX = item.col * TILE_SIZE + ((entry?.footprintW ?? 1) * TILE_SIZE) / 2;
+      const topY = item.row * TILE_SIZE + LOUNGE_TABLE_TOP_PX;
+      const zY = (item.row + (entry?.footprintH ?? 1)) * TILE_SIZE;
+      const trayW = ROUND_TRAY[0].length;
+      const trayX = Math.round(centerX - trayW / 2);
+      const trayY = topY + 1;
+      this.tableDecor.push({ sprite: ROUND_TRAY, x: trayX, y: trayY, zY: zY + 0.1 });
+      const plateW = FRUIT_PLATE_LEFT[0].length;
+      const plateY = topY + 2;
+      this.tableDecor.push(
+        {
+          sprite: FRUIT_PLATE_LEFT,
+          x: trayX - LOUNGE_PLATE_GAP_PX - plateW,
+          y: plateY,
+          zY: zY + 0.1,
+        },
+        {
+          sprite: FRUIT_PLATE_RIGHT,
+          x: trayX + trayW + LOUNGE_PLATE_GAP_PX,
+          y: plateY,
+          zY: zY + 0.1,
+        },
+      );
+      // Two glasses at the back of the tray, two in front (drawn over the back pair)
+      const glassH = TABLE_GLASS.length;
+      for (const [dx, dy, dz] of TRAY_GLASS_OFFSETS) {
+        this.glassSlots.push({ x: trayX + dx, y: trayY + dy - glassH, zY: zY + dz });
+      }
+    }
+  }
+
+  /** The table setting, minus the glasses someone is holding. */
+  private glassInstances(): FurnitureInstance[] {
+    const held = new Set<number>();
+    for (const ch of this.getDrawnCharacters()) {
+      if (ch.glassSlot !== null && ch.glassSlot !== undefined) held.add(ch.glassSlot);
+    }
+    return [
+      ...this.tableDecor,
+      ...this.glassSlots
+        .filter((_, i) => !held.has(i))
+        .map((spot) => ({ sprite: TABLE_GLASS, ...spot })),
+    ];
+  }
+
+  /** Sofa sitters drink no beer: they sit, and every so often take a free glass
+   *  off the tray, sip, and put it back. All glasses out — wait a moment. */
+  private updateSofaSitting(dt: number): void {
+    let glassesMoved = false;
+    const drawn = this.getDrawnCharacters();
+    for (const ch of drawn) {
+      ch.noBeer = !this.beerFloors.has(this.tileMap[ch.tileRow]?.[ch.tileCol]);
+      const seat = ch.seatId ? this.seats.get(ch.seatId) : undefined;
+      const seated =
+        ch.state === CharacterState.TYPE &&
+        seat !== undefined &&
+        this.isSofaSeat(seat.uid) &&
+        ch.tileCol === seat.seatCol &&
+        ch.tileRow === seat.seatRow;
+      if (!seated) {
+        if (ch.sipping) glassesMoved = true; // stood up: the glass goes back first
+        ch.onSofa = false;
+        ch.sipping = false;
+        ch.glassSlot = null;
+        continue;
+      }
+      if (!ch.onSofa) {
+        ch.onSofa = true;
+        ch.sipTimer = randomBetween(SOFA_SIP_GAP_MIN_SEC, SOFA_SIP_GAP_MAX_SEC);
+      }
+      ch.sipTimer = (ch.sipTimer ?? 0) - dt;
+      if (ch.sipTimer > 0) continue;
+      if (ch.sipping) {
+        ch.sipping = false;
+        ch.glassSlot = null;
+        ch.sipTimer = randomBetween(SOFA_SIP_GAP_MIN_SEC, SOFA_SIP_GAP_MAX_SEC);
+      } else {
+        const held = new Set(drawn.map((o) => o.glassSlot));
+        const free = this.glassSlots.findIndex((_, i) => !held.has(i));
+        if (free === -1) {
+          ch.sipTimer = SOFA_GLASS_RETRY_SEC;
+          continue;
+        }
+        ch.sipping = true;
+        ch.glassSlot = free;
+        ch.sipTimer = SOFA_SIP_SEC;
+      }
+      ch.frame = 0;
+      ch.frameTimer = 0;
+      glassesMoved = true;
+    }
+    if (glassesMoved) this.rebuildFurnitureInstances();
+  }
+
+  /** Patrons close together anywhere on the map talk in pairs (speech lines
+   *  over their heads). The user's avatar is busy while in League. */
+  private updateChat(dt: number): void {
+    if (this.exercise) {
+      updateExerciseChatter(this.exercise, dt);
+      return;
+    }
+    const talkers = [
+      ...[...this.characters.values()].filter((ch) => !ch.matrixEffect),
+      ...this.getVisiblePatrons().filter((p) => this.gameTitle(p) === null),
+    ];
+    // The waiter only talks while serving (see updateWaiter)
+    this.chats = updateChats(
+      this.chats,
+      talkers,
+      characterNameOf,
+      dt,
+      (a, b) => !this.isWaiter(a) && !this.isWaiter(b),
+    );
+    const talking = new Set(talkers);
+    for (const ch of [...this.characters.values(), ...this.patrons]) {
+      if (!talking.has(ch)) ch.speech = null;
+    }
+  }
+
+  /** A drawn character (visible patron or agent) by storyline name. */
+  private characterNamed(name: string | null): Character | null {
+    if (!name) return null;
+    const all = [...this.characters.values(), ...this.getVisiblePatrons()];
+    return all.find((c) => !c.isSubagent && characterNameOf(c) === name) ?? null;
+  }
+
+  private storyAnchor(ch: Character): Character | null {
+    return this.characterNamed(storyAnchorName(storyTiesOf(characterNameOf(ch))));
+  }
+
+  /** Storyline wanderer: a few wrong turns on the way to the next destination. */
+  private getLost(ch: Character): void {
+    ch.lostDetours =
+      STORY_WANDERER_DETOURS_MIN +
+      Math.floor(Math.random() * (STORY_WANDERER_DETOURS_MAX - STORY_WANDERER_DETOURS_MIN + 1));
+  }
+
+  /** Storyline extras for one patron each frame: follow, sync, hearts, wrong turns. */
+  private updateStory(p: Character, dt: number, wasActive: boolean): void {
+    const ties = storyTiesOf(characterNameOf(p));
+
+    // Followers wander near their leader
+    const leader = this.characterNamed(ties.leader);
+    p.wanderAnchor = leader ? { col: leader.tileCol, row: leader.tileRow } : null;
+
+    if (p.isActive !== wasActive) {
+      if (p.isActive && ties.wanderer) this.getLost(p);
+      // Partner / buddy follows suit shortly (only if it isn't doing the same already)
+      const mate = this.characterNamed(storySyncName(ties));
+      if (mate && isPatron(mate) && mate.isActive !== p.isActive) {
+        mate.patronTimer = Math.min(mate.patronTimer ?? 0, STORY_SYNC_DELAY_SEC);
+      }
+    }
+
+    // Couples close together show a heart now and then
+    p.heartTimer = Math.max(0, (p.heartTimer ?? 0) - dt);
+    p.heartCooldown = Math.max(0, (p.heartCooldown ?? 0) - dt);
+    const partner = this.characterNamed(ties.partner);
+    if (
+      partner &&
+      p.heartCooldown === 0 &&
+      Math.abs(partner.tileCol - p.tileCol) + Math.abs(partner.tileRow - p.tileRow) <=
+        STORY_HEART_RANGE_TILES
+    ) {
+      p.heartTimer = STORY_HEART_SHOW_SEC;
+      p.heartCooldown =
+        STORY_HEART_COOLDOWN_MIN_SEC +
+        Math.random() * (STORY_HEART_COOLDOWN_MAX_SEC - STORY_HEART_COOLDOWN_MIN_SEC);
+    }
+  }
+
+  /** Keep one patron per loaded character sprite (the count grows once PNGs load). */
+  private ensurePatrons(): void {
+    if (!BAR_PATRONS_ENABLED || this.walkableTiles.length === 0) return;
+    const count = getLoadedCharacterCount();
+    if (this.patrons.length === count) return;
+    this.patrons = [];
+    for (let i = 0; i < count; i++) {
+      const spawn = this.walkableTiles[Math.floor(Math.random() * this.walkableTiles.length)];
+      this.patrons.push(createPatron(i, i, spawn.col, spawn.row));
+    }
+  }
+
+  private updatePatron(p: Character, dt: number): void {
+    // An agent took this patron's seat — give it up
+    if (p.seatId) {
+      const seat = this.seats.get(p.seatId);
+      if (!seat || seat.assigned) sendPatronToRest(p, PATRON_SEAT_RETRY_SEC);
+    }
+    if (this.isUserAvatar(p)) this.steerUserAvatar(p);
+    const wasActive = p.isActive;
+    tickPatronSchedule(p, dt, () => this.pickPatronSeat(p));
+    this.updateStory(p, dt, wasActive);
+    if (this.isUserAvatar(p)) this.steerBossRounds(p, dt);
+    this.updateRestAssignment(p);
+    this.withOwnRestSpotUnblocked(p, () =>
+      this.withOwnSeatUnblocked(p, () =>
+        updateCharacter(p, dt, this.walkableTiles, this.seats, this.tileMap, this.blockedTiles),
+      ),
+    );
+  }
+
+  /** Temporarily unblock a character's own rest tile, run fn, then re-block */
+  private withOwnRestSpotUnblocked<T>(ch: Character, fn: () => T): T {
+    const key = ch.restSpot ? `${ch.restSpot.col},${ch.restSpot.row}` : null;
+    const wasBlocked = key ? this.blockedTiles.delete(key) : false;
+    const result = fn();
+    if (key && wasBlocked) this.blockedTiles.add(key);
     return result;
   }
 
@@ -435,6 +1080,10 @@ export class OfficeState {
       if (ch.isSubagent) continue;
       if (ch.palette < paletteCount) counts[ch.palette]++;
     }
+    // Staff skins are theirs alone: never handed to an agent
+    for (const i of STAFF_PALETTES) {
+      if (i < paletteCount && STAFF_PALETTES.size < paletteCount) counts[i] = Infinity;
+    }
     return pickDiversePalette(paletteCount, counts);
   }
 
@@ -451,7 +1100,8 @@ export class OfficeState {
 
     let palette: number;
     let hueShift: number;
-    if (preferredPalette !== undefined) {
+    // A saved skin that now belongs to the staff is re-picked
+    if (preferredPalette !== undefined && !STAFF_PALETTES.has(preferredPalette)) {
       palette = preferredPalette;
       hueShift = preferredHueShift ?? 0;
     } else {
@@ -843,7 +1493,14 @@ export class OfficeState {
   private rebuildFurnitureInstances(): void {
     // Collect tiles where active agents face desks
     const autoOnTiles = new Set<string>();
-    for (const ch of this.characters.values()) {
+    // Gaming PCs light up while someone plays at them (the desk is above the chair)
+    for (const ch of [...this.characters.values(), ...this.patrons]) {
+      if (ch.state !== CharacterState.GAME || !ch.restSpot) continue;
+      for (let d = 1; d <= AUTO_ON_FACING_DEPTH; d++) {
+        autoOnTiles.add(`${ch.restSpot.col},${ch.restSpot.row - d}`);
+      }
+    }
+    for (const ch of [...this.characters.values(), ...this.patrons]) {
       if (!ch.isActive || !ch.seatId) continue;
       const seat = this.seats.get(ch.seatId);
       if (!seat) continue;
@@ -874,7 +1531,10 @@ export class OfficeState {
     }
 
     if (autoOnTiles.size === 0) {
-      this.furniture = layoutToFurnitureInstances(this.layout.furniture);
+      this.furniture = [
+        ...layoutToFurnitureInstances(this.layout.furniture),
+        ...this.glassInstances(),
+      ];
       return;
     }
 
@@ -904,7 +1564,7 @@ export class OfficeState {
       return item;
     });
 
-    this.furniture = layoutToFurnitureInstances(modifiedFurniture);
+    this.furniture = [...layoutToFurnitureInstances(modifiedFurniture), ...this.glassInstances()];
   }
 
   setAgentTool(id: number, tool: string | null): void {
@@ -1122,7 +1782,108 @@ export class OfficeState {
     ch.maxContextTokens = maxContextTokens;
   }
 
+  /** Exercise break: every agent and visible patron walks to a line on the
+   *  floor, then they all work out together. Fires on its own every
+   *  EXERCISE_INTERVAL_MS; callable directly to start one now. */
+  startExercise(): void {
+    this.nextExerciseAt = Date.now() + EXERCISE_INTERVAL_MS;
+    if (this.exercise) return;
+    const members = [
+      ...[...this.characters.values()].filter((ch) => !ch.matrixEffect),
+      ...this.getVisiblePatrons(),
+    ];
+    if (members.length === 0) return;
+    // End any chats: the break has its own lines
+    for (const ch of members) ch.speech = null;
+    this.chats = [];
+    // The boss coaches from in front of the line rather than standing in it
+    const coach = members.find((ch) => this.isUserAvatar(ch)) ?? null;
+    if (coach) members.splice(members.indexOf(coach), 1);
+    const near = {
+      col: Math.round(members.reduce((s, ch) => s + ch.tileCol, 0) / members.length),
+      row: Math.round(members.reduce((s, ch) => s + ch.tileRow, 0) / members.length),
+    };
+    const lineSlots = pickLineSlots(members.length, this.walkableTiles, near);
+    if (coach) {
+      const front = this.coachSpot(lineSlots);
+      const path = front
+        ? findPath(
+            coach.tileCol,
+            coach.tileRow,
+            front.col,
+            front.row,
+            this.tileMap,
+            this.blockedTiles,
+          )
+        : [];
+      joinExercise(coach, path, front?.facing);
+    }
+    // Left-to-right into left-to-right slots, so paths cross as little as possible
+    const slots = lineSlots.sort((a, b) => a.col - b.col || a.row - b.row);
+    members.sort((a, b) => a.tileCol - b.tileCol || a.tileRow - b.tileRow);
+    members.forEach((ch, i) => {
+      const slot = slots[i];
+      const path = slot
+        ? findPath(ch.tileCol, ch.tileRow, slot.col, slot.row, this.tileMap, this.blockedTiles)
+        : [];
+      joinExercise(ch, path);
+    });
+    if (coach) members.push(coach);
+    this.exercise = { phase: 'gather', timer: 0, members, coach, chatTimer: 0 };
+  }
+
+  /** Where the coach stands: centred in front of the first row (two tiles
+   *  out, facing up at the line), else behind it facing the same way. */
+  private coachSpot(
+    slots: Array<{ col: number; row: number }>,
+  ): { col: number; row: number; facing: Direction } | null {
+    const first = slots[0];
+    if (!first) return null;
+    const row = slots.filter((s) => s.row === first.row);
+    const col = row[Math.floor(row.length / 2)].col;
+    const taken = new Set(slots.map((s) => `${s.col},${s.row}`));
+    const open = (r: number) =>
+      !taken.has(`${col},${r}`) && this.walkableTiles.some((t) => t.col === col && t.row === r);
+    for (const dr of [2, 3, 1]) {
+      if (open(first.row + dr)) return { col, row: first.row + dr, facing: Direction.UP };
+    }
+    for (const dr of [-2, -1]) {
+      if (open(first.row + dr)) return { col, row: first.row + dr, facing: Direction.DOWN };
+    }
+    return null;
+  }
+
+  /** Gather → workout once the line has formed (or the wait ran out) → done. */
+  private tickExercise(dt: number): void {
+    const ex = this.exercise;
+    if (!ex) return;
+    ex.timer += dt;
+    if (ex.phase === 'gather') {
+      const formed = ex.members.every((ch) => ch.state !== CharacterState.WALK);
+      if (!formed && ex.timer < EXERCISE_GATHER_MAX_SEC) return;
+      for (const ch of ex.members) beginWorkout(ch);
+      ex.phase = 'workout';
+      ex.timer = 0;
+      return;
+    }
+    if (ex.timer >= EXERCISE_WORKOUT_SEC) this.stopExercise();
+  }
+
+  /** Whether an exercise break is running right now. */
+  isExercising(): boolean {
+    return this.exercise !== null;
+  }
+
+  /** End the break now; everyone goes back to what they were doing. */
+  stopExercise(): void {
+    if (!this.exercise) return;
+    for (const ch of this.exercise.members) endWorkout(ch);
+    this.exercise = null;
+    this.waiterRound = newWaiterRound(WAITER_PAUSE_MIN_SEC);
+  }
+
   update(dt: number): void {
+    this.clockSec += dt;
     // Furniture animation cycling
     const prevFrame = Math.floor(this.furnitureAnimTimer / FURNITURE_ANIM_INTERVAL_SEC);
     this.furnitureAnimTimer += dt;
@@ -1137,6 +1898,9 @@ export class OfficeState {
       this.greeter = null;
     }
 
+    if (!this.exercise && Date.now() >= this.nextExerciseAt) this.startExercise();
+    const inLine = new Set(this.exercise?.members);
+
     const toDelete: number[] = [];
     for (const ch of this.characters.values()) {
       const effect = advanceMatrixEffect(ch, dt);
@@ -1145,10 +1909,25 @@ export class OfficeState {
         continue; // skip normal FSM while the effect is (or just was) active
       }
 
-      // Temporarily unblock own seat so character can pathfind to it
-      this.withOwnSeatUnblocked(ch, () =>
-        updateCharacter(ch, dt, this.walkableTiles, this.seats, this.tileMap, this.blockedTiles),
-      );
+      if (inLine.has(ch)) {
+        updateExerciser(ch, dt);
+      } else {
+        this.updateRestAssignment(ch);
+
+        // Temporarily unblock own seat (and rest spot) so character can pathfind to it
+        this.withOwnRestSpotUnblocked(ch, () =>
+          this.withOwnSeatUnblocked(ch, () =>
+            updateCharacter(
+              ch,
+              dt,
+              this.walkableTiles,
+              this.seats,
+              this.tileMap,
+              this.blockedTiles,
+            ),
+          ),
+        );
+      }
 
       // Tick bubble timer for waiting bubbles
       if (ch.bubbleType === 'waiting') {
@@ -1163,6 +1942,24 @@ export class OfficeState {
     for (const id of toDelete) {
       this.characters.delete(id);
     }
+
+    // ── Bar patrons ────────────────────────────────────────────
+    this.ensurePatrons();
+    const twins = this.agentPaletteKeys();
+    for (const p of this.patrons) {
+      if (twins.has(p.palette)) {
+        // Its agent twin is here — hold no seat or rest spot while hidden
+        if (p.seatId || p.isActive) sendPatronToRest(p, PATRON_SEAT_RETRY_SEC);
+        p.restSpot = null;
+        continue;
+      }
+      if (inLine.has(p)) updateExerciser(p, dt);
+      else if (this.isWaiter(p)) this.updateWaiter(p, dt);
+      else this.updatePatron(p, dt);
+    }
+    this.tickExercise(dt);
+    this.updateSofaSitting(dt);
+    this.updateChat(dt);
 
     // ── Pet FSM ────────────────────────────────────────────────
     for (const pet of this.pets) {
@@ -1204,6 +2001,27 @@ export class OfficeState {
     return chars;
   }
 
+  /** What the canvas draws: `getCharacters()` plus the bar patrons. Kept apart
+   *  so agent-facing consumers (e2e hooks, overlays) never see patrons. */
+  getDrawnCharacters(): Character[] {
+    return [...this.getCharacters(), ...this.getVisiblePatrons()];
+  }
+
+  /** Patrons currently drawn (twins of an on-screen agent stay home). */
+  getVisiblePatrons(): Character[] {
+    const taken = this.agentPaletteKeys();
+    return this.patrons.filter((p) => !taken.has(p.palette));
+  }
+
+  /** Palettes shown by agents as-is (no hue shift): their patron twin stays home. */
+  private agentPaletteKeys(): Set<number> {
+    const out = new Set<number>();
+    for (const ch of this.characters.values()) {
+      if (!ch.isSubagent && ch.hueShift === 0) out.add(ch.palette);
+    }
+    return out;
+  }
+
   /** Get character at pixel position (for hit testing). Returns id or null.
    *  Agents only: clicks pass straight through the consent greeter, which is
    *  a prop, not something to select or follow. */
@@ -1213,9 +2031,8 @@ export class OfficeState {
       // Skip characters that are despawning
       if (ch.matrixEffect === 'despawn') continue;
       // Character sprite is 16x24, anchored bottom-center
-      // Apply sitting offset to match visual position
-      const sittingOffset = ch.state === CharacterState.TYPE ? CHARACTER_SITTING_OFFSET_PX : 0;
-      const anchorY = ch.y + sittingOffset;
+      // Apply sitting/sleeping offset to match visual position
+      const anchorY = ch.y + characterDrawOffsetPx(ch);
       const left = ch.x - CHARACTER_HIT_HALF_WIDTH;
       const right = ch.x + CHARACTER_HIT_HALF_WIDTH;
       const top = anchorY - CHARACTER_HIT_HEIGHT;
@@ -1226,4 +2043,13 @@ export class OfficeState {
     }
     return null;
   }
+}
+
+function randomBetween(min: number, max: number): number {
+  return min + Math.random() * (max - min);
+}
+
+/** Same rest tile (kind is implied by the tile). */
+function sameSpot(a: RestSpot, b: RestSpot): boolean {
+  return a.col === b.col && a.row === b.row;
 }

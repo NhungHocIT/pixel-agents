@@ -12,9 +12,11 @@ import { Button } from './ui/Button.js';
 interface ZoomControlsProps {
   zoom: number;
   onZoomChange: (zoom: number) => void;
+  /** Start an exercise break now, or end the one running. */
+  onExerciseToggle?: () => void;
 }
 
-export function ZoomControls({ zoom, onZoomChange }: ZoomControlsProps) {
+export function ZoomControls({ zoom, onZoomChange, onExerciseToggle }: ZoomControlsProps) {
   const [showLevel, setShowLevel] = useState(false);
   const [fadeOut, setFadeOut] = useState(false);
   const timerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -64,7 +66,7 @@ export function ZoomControls({ zoom, onZoomChange }: ZoomControlsProps) {
             transition: `opacity ${ZOOM_LEVEL_FADE_DURATION_SEC}s ease-out`,
           }}
         >
-          {zoom}x
+          {Math.round(zoom * 100) / 100}x
         </div>
       )}
 
@@ -117,6 +119,16 @@ export function ZoomControls({ zoom, onZoomChange }: ZoomControlsProps) {
             />
           </svg>
         </Button>
+        {onExerciseToggle && (
+          <Button
+            size="icon_lg"
+            onClick={onExerciseToggle}
+            className="border-border! shadow-pixel"
+            title="Exercise break: start now / stop"
+          >
+            <span className="text-base leading-none">💪</span>
+          </Button>
+        )}
       </div>
     </>
   );

@@ -163,22 +163,28 @@ export function parseCarpetPng(pngBuffer: Buffer): string[][][] {
 /**
  * Decode a single character PNG (112×96) into direction-keyed frame arrays.
  * Each PNG has 3 direction rows (down, up, right) × 7 frames (16×32 each).
+ * A sheet that is an integer multiple of that size (e.g. 224×192) holds
+ * high-resolution frames (32×64): the webview draws them in the same 16×32
+ * world footprint at that many device pixels per sprite pixel.
  */
 export function decodeCharacterPng(pngBuffer: Buffer): CharacterDirectionSprites {
   const png = PNG.sync.read(sanitizePngBuffer(pngBuffer));
   const charData: CharacterDirectionSprites = { down: [], up: [], right: [] };
+  const scale = Math.max(1, Math.floor(png.width / (CHAR_FRAME_W * CHAR_FRAMES_PER_ROW)));
+  const frameW = CHAR_FRAME_W * scale;
+  const frameH = CHAR_FRAME_H * scale;
 
   for (let dirIdx = 0; dirIdx < CHARACTER_DIRECTIONS.length; dirIdx++) {
     const dir = CHARACTER_DIRECTIONS[dirIdx];
-    const rowOffsetY = dirIdx * CHAR_FRAME_H;
+    const rowOffsetY = dirIdx * frameH;
     const frames: string[][][] = [];
 
     for (let f = 0; f < CHAR_FRAMES_PER_ROW; f++) {
       const sprite: string[][] = [];
-      const frameOffsetX = f * CHAR_FRAME_W;
-      for (let y = 0; y < CHAR_FRAME_H; y++) {
+      const frameOffsetX = f * frameW;
+      for (let y = 0; y < frameH; y++) {
         const row: string[] = [];
-        for (let x = 0; x < CHAR_FRAME_W; x++) {
+        for (let x = 0; x < frameW; x++) {
           const idx = ((rowOffsetY + y) * png.width + (frameOffsetX + x)) * 4;
           const r = png.data[idx];
           const g = png.data[idx + 1];

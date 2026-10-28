@@ -30,7 +30,21 @@ export const CharacterState = {
   IDLE: 'idle',
   WALK: 'walk',
   TYPE: 'type',
+  SLEEP: 'sleep',
+  /** Resting at a gaming PC (keyboard animation). */
+  GAME: 'game',
+  /** Standing in the exercise-break line, working out. */
+  EXERCISE: 'exercise',
 } as const;
+
+/** A tile an idle character rests on. */
+export interface RestSpot {
+  col: number;
+  row: number;
+  kind: 'bed' | 'game';
+  /** Beds only: uid of the double bed this half belongs to. */
+  bed?: string;
+}
 export type CharacterState = (typeof CharacterState)[keyof typeof CharacterState];
 
 export const Direction = {
@@ -202,6 +216,38 @@ export interface Character {
   isActive: boolean;
   /** Assigned seat uid, or null if no seat */
   seatId: string | null;
+  /** Where an idle agent rests — a bed's lower tile (sleep) or a gaming chair
+   *  (play) — held from the end of its turn until it has walked off it again.
+   *  Assigned by OfficeState. */
+  restSpot?: RestSpot | null;
+  /** Seated on the lounge sofa: no beer, just a glass of water from the table.
+   *  sipping = glass in hand (gone from the table); sipTimer counts down to the
+   *  next sip, or to putting the glass back. Kept up by OfficeState. */
+  onSofa?: boolean;
+  sipping?: boolean;
+  /** Standing on a floor without bar seats (game room, lounge): no beer here.
+   *  Kept up by OfficeState. */
+  noBeer?: boolean;
+  /** While sipping: which glass on the lounge tray is in hand. */
+  glassSlot?: number | null;
+  sipTimer?: number;
+  /** Chat: the line this character is saying right now, and the pause
+   *  before it starts another chat. */
+  speech?: string | null;
+  chatCooldown?: number;
+  /** Bar patrons only (never agents): seconds left in the current drink / rest spell. */
+  patronTimer?: number;
+  /** Exercise break: seconds into the workout (drives which move is shown). */
+  exerciseTimer?: number;
+  /** Exercise break: which way to face in line (the coach faces the others). */
+  exerciseFacing?: Direction;
+  /** Storyline: wrong turns still to take before heading to the real destination. */
+  lostDetours?: number;
+  /** Storyline: idle wandering stays near this tile (a follower's leader). */
+  wanderAnchor?: { col: number; row: number } | null;
+  /** Storyline: seconds left on a heart bubble, and until the next one may show. */
+  heartTimer?: number;
+  heartCooldown?: number;
   /** Active speech bubble type, or null if none showing */
   bubbleType: 'permission' | 'waiting' | null;
   /** Only meaningful while bubbleType === 'waiting': true when the agent went
