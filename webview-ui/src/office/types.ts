@@ -243,6 +243,8 @@ export interface Character {
   exerciseTimer?: number;
   /** Exercise break: which way to face in line (the coach faces the others). */
   exerciseFacing?: Direction;
+  /** Exercise break: px right of the tile centre (a packed back row stands in the gaps). */
+  exerciseShiftPx?: number;
   /** Storyline: wrong turns still to take before heading to the real destination. */
   lostDetours?: number;
   /** Storyline: idle wandering stays near this tile (a follower's leader). */

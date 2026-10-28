@@ -89,11 +89,12 @@ import { characterNameOf, storyAnchorName, storySyncName, storyTiesOf } from './
 import { characterDrawOffsetPx, createCharacter, updateCharacter } from './characters.js';
 import type { ChatPlace, InviteTo } from './dialogues.js';
 import { PICKLEBALL, randomOf, waiterDialogue } from './dialogues.js';
-import type { ExerciseSession } from './exercise.js';
+import type { ExerciseSession, ExerciseSlot } from './exercise.js';
 import {
   beginWorkout,
   endWorkout,
   joinExercise,
+  pickCourtRows,
   pickLineSlots,
   updateExerciseChatter,
   updateExerciser,
@@ -2097,7 +2098,11 @@ export class OfficeState {
       col: Math.round(members.reduce((s, ch) => s + ch.tileCol, 0) / members.length),
       row: Math.round(members.reduce((s, ch) => s + ch.tileRow, 0) / members.length),
     };
-    const lineSlots = pickLineSlots(members.length, this.walkableTiles, near);
+    // On the pickleball court if there is one: two staggered rows
+    const court = this.court();
+    const courtRows = court ? pickCourtRows(members.length, court, this.walkableTiles) : [];
+    const lineSlots: ExerciseSlot[] =
+      courtRows.length > 0 ? courtRows : pickLineSlots(members.length, this.walkableTiles, near);
     if (coach) {
       const front = this.coachSpot(lineSlots);
       const path = front
@@ -2120,7 +2125,7 @@ export class OfficeState {
       const path = slot
         ? findPath(ch.tileCol, ch.tileRow, slot.col, slot.row, this.tileMap, this.blockedTiles)
         : [];
-      joinExercise(ch, path);
+      joinExercise(ch, path, Direction.DOWN, slot?.shiftPx);
     });
     if (coach) members.push(coach);
     this.exercise = { phase: 'gather', timer: 0, members, coach, chatTimer: 0 };
