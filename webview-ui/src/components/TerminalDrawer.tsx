@@ -1,7 +1,11 @@
 import type { MouseEvent as ReactMouseEvent, ReactNode } from 'react';
-import { useRef } from 'react';
+import { useEffect, useRef, useState } from 'react';
 
-import { OFFICE_SHELL_ID, shellTerminalId } from '../../../core/src/constants.js';
+import {
+  OFFICE_SHELL_EXTRA_BASE,
+  OFFICE_SHELL_ID,
+  shellTerminalId,
+} from '../../../core/src/constants.js';
 import { TERMINAL_DRAWER_RESIZE_HANDLE_PX } from '../constants.js';
 import type { TerminalConnectionStatus } from '../terminal/terminalClient.js';
 import type { TabStatus } from './AgentCard.js';
@@ -20,10 +24,12 @@ interface TerminalDrawerProps {
   children: ReactNode;
   /** Agent ids with a live Claude PTY — mounted hidden, for the chat to type into. */
   claudeAgentIds: number[];
-  /** Whether the office's own shell (cmd) is running. */
-  hasOfficeShell: boolean;
-  /** Start the office's shell (it opens with the app; this restarts an exited one). */
-  onOpenOfficeShell: () => void;
+  /** The office's own shells (cmd) that are running, by office shell id. */
+  officeShellIds: number[];
+  /** Start an office shell — OFFICE_SHELL_ID opens with the app; "+" adds more. */
+  onOpenOfficeShell: (id: number) => void;
+  /** Kill an office shell (its tab's ×). */
+  onCloseOfficeShell: (id: number) => void;
   /** The agent the user picked last (card, character or chat tab). */
   selectedAgentId: number | null;
   isOpen: boolean;
@@ -65,8 +71,9 @@ interface TerminalDrawerProps {
 export function TerminalDrawer({
   children,
   claudeAgentIds,
-  hasOfficeShell,
+  officeShellIds,
   onOpenOfficeShell,
+  onCloseOfficeShell,
   selectedAgentId,
   isOpen,
   onClosePanel,
@@ -86,8 +93,29 @@ export function TerminalDrawer({
 }: TerminalDrawerProps) {
   const inputs = useRef(new Map<number, TerminalInputHandle>());
 
-  const officeShellPaneId = shellTerminalId(OFFICE_SHELL_ID);
-  const paneIds = hasOfficeShell ? [...claudeAgentIds, officeShellPaneId] : claudeAgentIds;
+  // The office's cmds, one tab each in open order; the first stays "cmd".
+  const shellIds = [...officeShellIds].sort((a, b) => a - b);
+  const [pickedShellId, setPickedShellId] = useState<number | null>(null);
+  // A "+" picks its cmd once the server announces it.
+  const [pendingShellId, setPendingShellId] = useState<number | null>(null);
+  useEffect(() => {
+    if (pendingShellId !== null && officeShellIds.includes(pendingShellId)) {
+      setPickedShellId(pendingShellId);
+      setPendingShellId(null);
+    }
+  }, [officeShellIds, pendingShellId]);
+  const shownShellId =
+    pickedShellId !== null && shellIds.includes(pickedShellId)
+      ? pickedShellId
+      : (shellIds[shellIds.length - 1] ?? null);
+  const addShell = () => {
+    const id = Math.max(OFFICE_SHELL_EXTRA_BASE - 1, ...shellIds) + 1;
+    setPendingShellId(id);
+    onOpenOfficeShell(id);
+  };
+  const shellLabel = (id: number, i: number) => (id === OFFICE_SHELL_ID ? 'cmd' : `cmd ${i + 1}`);
+
+  const paneIds = [...claudeAgentIds, ...shellIds.map(shellTerminalId)];
   // The chat follows the agent picked last, else the character selected in
   // the office, else the first agent.
   const chatAgentId =
@@ -116,13 +144,49 @@ export function TerminalDrawer({
           title="Drag to resize"
         />
 
-        <div className="flex items-center gap-4 px-8 pt-6 pb-4 shrink-0 border-b-2 border-border">
-          <span className="px-8 text-text">Terminal</span>
+        {/* One tab per cmd, "+" for another. */}
+        <div className="flex items-center gap-2 px-8 pt-6 shrink-0 border-b-2 border-border">
+          <div className="flex-1 min-w-0 flex items-center gap-2 overflow-x-auto">
+            {shellIds.map((id, i) => (
+              <div
+                key={id}
+                onClick={() => setPickedShellId(id)}
+                className={`shrink-0 flex items-center gap-4 pl-8 pr-2 py-2 cursor-pointer border-2 border-b-0 whitespace-nowrap ${
+                  id === shownShellId
+                    ? 'bg-active-bg border-accent text-text'
+                    : 'bg-transparent border-transparent text-text-muted hover:text-text hover:bg-btn-hover'
+                }`}
+              >
+                {shellLabel(id, i)}
+                <Button
+                  variant="ghost"
+                  size="icon"
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    onCloseOfficeShell(id);
+                  }}
+                  className="hover:bg-btn-hover"
+                  title="Đóng cmd này"
+                >
+                  ×
+                </Button>
+              </div>
+            ))}
+            <Button
+              variant="ghost"
+              size="icon"
+              onClick={addShell}
+              className="shrink-0 hover:bg-btn-hover"
+              title="Mở cmd mới"
+            >
+              +
+            </Button>
+          </div>
           <Button
             variant="ghost"
             size="icon"
             onClick={onClosePanel}
-            className="ml-auto hover:bg-btn-hover"
+            className="shrink-0 hover:bg-btn-hover"
             title="Close terminal"
           >
             {'<'}
@@ -130,17 +194,22 @@ export function TerminalDrawer({
         </div>
 
         <div className="relative flex-1 min-h-0 p-4">
-          {!hasOfficeShell && (
+          {shownShellId === null && (
             <div className="absolute inset-4 flex flex-col gap-8 items-center justify-center text-sm text-text-muted">
               <span>Terminal chưa chạy</span>
-              <Button variant="default" size="sm" onClick={onOpenOfficeShell}>
+              <Button
+                variant="default"
+                size="sm"
+                onClick={() => onOpenOfficeShell(OFFICE_SHELL_ID)}
+              >
                 Mở terminal
               </Button>
             </div>
           )}
           <TerminalPaneStack
             agentIds={paneIds}
-            shownAgentId={hasOfficeShell ? officeShellPaneId : null}
+            shownAgentId={shownShellId !== null ? shellTerminalId(shownShellId) : null}
+            autoFocus
             onStatusChange={(id, status) => {
               // Card dots follow the agent's Claude socket
               if (claudeAgentIds.includes(id)) onStatusChange(id, status);

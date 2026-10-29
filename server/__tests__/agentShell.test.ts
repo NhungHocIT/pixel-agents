@@ -3,7 +3,11 @@ import * as os from 'os';
 import * as path from 'path';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 
-import { shellTerminalId } from '../../core/src/constants.js';
+import {
+  OFFICE_SHELL_EXTRA_BASE,
+  OFFICE_SHELL_ID,
+  shellTerminalId,
+} from '../../core/src/constants.js';
 import { createAgentState } from '../src/agentState.js';
 import { AgentStateStore } from '../src/agentStateStore.js';
 import {
@@ -125,6 +129,19 @@ describe('agent shells', () => {
     closeAgentShell(manager, 1);
     expect(hasAgentShell(manager, 1)).toBe(false);
     expect(broadcasts).toContainEqual({ type: 'shellSessionClosed', agentId: 1 });
+  });
+
+  it('opens several office shells, each in home, with no agent', () => {
+    const spawns: Array<{ file: string; options: PtySpawnOptions }> = [];
+    const manager = fakeManager(spawns);
+    for (const id of [OFFICE_SHELL_ID, OFFICE_SHELL_EXTRA_BASE, OFFICE_SHELL_EXTRA_BASE + 1]) {
+      expect(openAgentShell({ store, ptyManager: manager }, id)).toBe(true);
+    }
+    expect(spawns).toHaveLength(3);
+    expect(spawns.every((s) => s.options.cwd === os.homedir())).toBe(true);
+    closeAgentShell(manager, OFFICE_SHELL_EXTRA_BASE);
+    expect(hasAgentShell(manager, OFFICE_SHELL_EXTRA_BASE)).toBe(false);
+    expect(hasAgentShell(manager, OFFICE_SHELL_EXTRA_BASE + 1)).toBe(true);
   });
 
   it('refuses an unknown agent', () => {

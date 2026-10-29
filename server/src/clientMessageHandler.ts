@@ -1,5 +1,9 @@
 import type { StateAdapter } from '../../core/src/adapter.js';
-import { OFFICE_SHELL_ID } from '../../core/src/constants.js';
+import {
+  isOfficeShellId,
+  OFFICE_SHELL_ID,
+  SHELL_TERMINAL_ID_OFFSET,
+} from '../../core/src/constants.js';
 import type { HookProvider } from '../../core/src/provider.js';
 import { resendAgentActivity } from './agentActivityResend.js';
 import { buildAgentDiagnostics } from './agentDiagnostics.js';
@@ -160,6 +164,11 @@ export function handleClientMessage(
     }
 
     case 'closeAgent': {
+      // An office shell's tab × — kill that cmd (its exit announces the close).
+      if (isOfficeShellId(msg.id as number)) {
+        if (ctx.ptyManager) closeAgentShell(ctx.ptyManager, msg.id as number);
+        break;
+      }
       // Two shapes now: a PTY-backed agent we launched (kill the process -- the
       // counterpart of VS Code's terminalRef.dispose()), or an external agent we
       // merely observed (dismiss the file so the scanner doesn't re-adopt it,
@@ -667,6 +676,13 @@ function handleWebviewReady(send: WsSend, ctx: ClientMessageContext): void {
     // The office's own cmd: opening the app opens it (or re-announces the
     // running one) — no agent needed.
     openAgentShell({ store, ptyManager: ctx.ptyManager }, OFFICE_SHELL_ID);
+    // The office's other cmds (the "+"), still running.
+    for (const ptyId of ctx.ptyManager.ids()) {
+      const shellId = ptyId - SHELL_TERMINAL_ID_OFFSET;
+      if (shellId !== OFFICE_SHELL_ID && isOfficeShellId(shellId)) {
+        send({ type: 'shellSessionOpened', agentId: shellId });
+      }
+    }
   }
 }
 

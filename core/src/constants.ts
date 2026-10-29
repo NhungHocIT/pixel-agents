@@ -37,6 +37,14 @@ export const SHELL_TERMINAL_ID_OFFSET = 1_000_000;
  *  like VS Code's terminal. Keyed like an agent shell under this id (agent ids
  *  start at 1, so 0 is never an agent). */
 export const OFFICE_SHELL_ID = 0;
+/** More office shells (the terminal panel's "+") take ids from here up — far
+ *  above any agent id, below the shell offset. */
+export const OFFICE_SHELL_EXTRA_BASE = 900_000;
+
+/** Whether the id is one of the office's own shells, not an agent. */
+export function isOfficeShellId(id: number): boolean {
+  return id === OFFICE_SHELL_ID || (id >= OFFICE_SHELL_EXTRA_BASE && id < SHELL_TERMINAL_ID_OFFSET);
+}
 
 /** The PTY session id of an agent's shell terminal. */
 export function shellTerminalId(agentId: number): number {

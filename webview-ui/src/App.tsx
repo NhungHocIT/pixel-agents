@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useMemo, useRef, useState, useSyncExternalStore } from 'react';
 
-import { OFFICE_SHELL_ID } from '../../core/src/constants.js';
+import { isOfficeShellId, OFFICE_SHELL_ID } from '../../core/src/constants.js';
 import { toMajorMinor } from './changelogData.js';
 import { AgentCardBar } from './components/AgentCardBar.js';
 import { BottomToolbar } from './components/BottomToolbar.js';
@@ -841,8 +841,10 @@ function App() {
           {terminalAvailable ? (
             <TerminalDrawer
               claudeAgentIds={terminalAgentIds}
-              hasOfficeShell={shellAgentIds.includes(OFFICE_SHELL_ID)}
-              onOpenOfficeShell={() => transport.send({ type: 'openShell', id: OFFICE_SHELL_ID })}
+              officeShellIds={shellAgentIds.filter(isOfficeShellId)}
+              onOpenOfficeShell={(id) => transport.send({ type: 'openShell', id })}
+              // closeAgent with an office shell id kills that cmd.
+              onCloseOfficeShell={(id) => transport.send({ type: 'closeAgent', id })}
               selectedAgentId={terminalDrawer.activeAgentId}
               isOpen={terminalDrawer.isOpen}
               onClosePanel={terminalDrawer.close}
