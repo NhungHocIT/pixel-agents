@@ -402,13 +402,26 @@ function App() {
       // without a terminal of its own runs in its Lead's, so it opens that
       // one (VS Code resolves the same way server-side).
       if (!terminalAvailable) return;
+      // Desktop: the left panel is the office's plain terminal, so a click
+      // only switches the chat to the agent.
+      if (!isMobile) {
+        selectDrawerAgent(focusId);
+        return;
+      }
       const leadId = os.characters.get(focusId)?.leadAgentId;
       const terminalId =
         leadId !== undefined && !drawerAgentIds.includes(focusId) ? leadId : focusId;
       openAgentTerminal(terminalId);
-      if (isMobile) showMobileTerminal();
+      showMobileTerminal();
     },
-    [terminalAvailable, drawerAgentIds, openAgentTerminal, isMobile, showMobileTerminal],
+    [
+      terminalAvailable,
+      drawerAgentIds,
+      openAgentTerminal,
+      isMobile,
+      showMobileTerminal,
+      selectDrawerAgent,
+    ],
   );
 
   // Card click when there is no terminal pane to switch (VS Code, or a
@@ -643,7 +656,8 @@ function App() {
             zoom={editor.zoom}
             panRef={editor.panRef}
             onCloseAgent={handleCloseAgent}
-            onOpenShell={terminalAvailable ? handleOpenShell : undefined}
+            // Desktop shows only the office's terminal, so an agent's own cmd is mobile-only.
+            onOpenShell={terminalAvailable && isMobile ? handleOpenShell : undefined}
             alwaysShowOverlay={alwaysShowOverlay}
           />
         </>
@@ -775,11 +789,11 @@ function App() {
       {!isDebugMode && (
         <AgentCardBar
           agentIds={agents}
-          activeAgentId={terminalAvailable ? terminalDrawer.shownAgentId : null}
+          activeAgentId={terminalAvailable ? terminalDrawer.activeAgentId : null}
           focusedAgentId={focusedAgentId}
           getAppearance={terminalDrawer.getAppearance}
           statusFor={terminalDrawer.statusFor}
-          onSelect={terminalAvailable ? openAgentTerminal : handleCardSelect}
+          onSelect={terminalAvailable ? selectDrawerAgent : handleCardSelect}
           onClose={handleCloseAgent}
         />
       )}
@@ -827,11 +841,9 @@ function App() {
           {terminalAvailable ? (
             <TerminalDrawer
               claudeAgentIds={terminalAgentIds}
-              shellAgentIds={shellAgentIds}
-              viewFor={(id) => terminalViews[id] ?? 'claude'}
-              onSelectView={setTerminalView}
-              onOpenShell={handleOpenShell}
-              shownAgentId={terminalDrawer.shownAgentId}
+              hasOfficeShell={shellAgentIds.includes(OFFICE_SHELL_ID)}
+              onOpenOfficeShell={() => transport.send({ type: 'openShell', id: OFFICE_SHELL_ID })}
+              selectedAgentId={terminalDrawer.activeAgentId}
               isOpen={terminalDrawer.isOpen}
               onClosePanel={terminalDrawer.close}
               widthPx={terminalDrawer.terminalWidthPx}
@@ -844,12 +856,12 @@ function App() {
               chatAgentIds={agents}
               focusedAgentId={focusedAgentId}
               onResumeAgent={(id) => {
-                // Its Claude terminal opens on the left once the server
-                // announces it (terminalSessionOpened makes it the shown tab).
+                // Its Claude terminal starts hidden once the server announces
+                // it, and the chat can then send to it.
                 setTerminalView(id, 'claude');
                 transport.send({ type: 'resumeAgent', id });
               }}
-              onSelectAgent={openAgentTerminal}
+              onSelectAgent={selectDrawerAgent}
               infoFor={chatAgentInfo}
               statusFor={terminalDrawer.statusFor}
             >

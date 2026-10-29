@@ -131,7 +131,21 @@ export function TerminalPane({
     });
     registerInputRef.current?.(agentId, {
       send: (data) => connection.write(data),
-      paste: (data) => term.paste(data),
+      // xterm's paste needs an opened terminal (it clears its textarea), and a
+      // pane opens on its first visible fit — the chat types into Claude
+      // terminals that never show. Claude Code turns bracketed paste on, so
+      // wrap the text in the markers ourselves (minus any it carries).
+      paste: (data) => {
+        if (term.element) {
+          term.paste(data);
+          return;
+        }
+        const text = data
+          .replaceAll('\x1b[200~', '')
+          .replaceAll('\x1b[201~', '')
+          .replace(/\r?\n/g, '\r');
+        connection.write(`\x1b[200~${text}\x1b[201~`);
+      },
     });
 
     // Touch: scroll + flick, tap to focus / open a URL, long-press selection
