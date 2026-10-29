@@ -548,7 +548,7 @@ export const WS_RECONNECT_DELAYS_MS = [250, 500, 1_000, 2_000, 4_000] as const;
 // which is why xterm's theme lives here rather than next to the component.
 
 // Two panels flank the office as flex siblings, in flow (not overlaid): the
-// selected agent's terminal on the left, its conversation as chat on the right.
+// office's plain terminal on the left, the agents' chats on the right.
 /** Width each panel starts at, as a fraction of the window; the user can drag
  *  its inner edge to resize. */
 export const TERMINAL_PANEL_DEFAULT_WIDTH_RATIO = 0.27;
@@ -557,6 +557,9 @@ export const CHAT_PANEL_DEFAULT_WIDTH_RATIO = 0.33;
 export const SIDE_PANEL_MIN_WIDTH_PX = 240;
 /** The office always keeps at least this much width between the panels. */
 export const TERMINAL_OFFICE_MIN_WIDTH_PX = 320;
+/** Narrowest a chat column gets before the open chats stack instead of
+ *  sitting side by side. */
+export const CHAT_COLUMN_MIN_WIDTH_PX = 300;
 /** How often the chat header re-reads the agent's context gauge. */
 export const CHAT_HEADER_REFRESH_MS = 1000;
 /** Width of the always-visible agent-card bar overlaying the office's right

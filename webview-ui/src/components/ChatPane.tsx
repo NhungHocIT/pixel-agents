@@ -20,6 +20,8 @@ interface ChatPaneProps {
   agentId: number;
   /** Polls only while shown. */
   isActive: boolean;
+  /** Takes the keyboard when it turns true — the chat picked last. */
+  isFocused: boolean;
   /** The agent's Claude terminal input — a sent message is pasted there and submitted. */
   getInput: (agentId: number) => TerminalInputHandle | undefined;
   /** False for a session with no Claude terminal here (an external one): the
@@ -47,7 +49,14 @@ const iconProps = {
  * the transcript (GET /api/chat/:agentId); sending types into the agent's own
  * Claude terminal, so the Chat and Claude tabs are one session.
  */
-export function ChatPane({ agentId, isActive, getInput, canSend, onTakeOver }: ChatPaneProps) {
+export function ChatPane({
+  agentId,
+  isActive,
+  isFocused,
+  getInput,
+  canSend,
+  onTakeOver,
+}: ChatPaneProps) {
   const [messages, setMessages] = useState<ChatMessage[]>([]);
   // Between the click and the terminal appearing (canSend turning true).
   const [takingOver, setTakingOver] = useState(false);
@@ -102,8 +111,8 @@ export function ChatPane({ agentId, isActive, getInput, canSend, onTakeOver }: C
   }, [messages, isActive]);
 
   useEffect(() => {
-    if (isActive) inputRef.current?.focus();
-  }, [isActive]);
+    if (isActive && isFocused) inputRef.current?.focus();
+  }, [isActive, isFocused]);
 
   const onScroll = () => {
     const list = listRef.current;

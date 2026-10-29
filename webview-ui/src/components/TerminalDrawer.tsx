@@ -53,7 +53,7 @@ interface TerminalDrawerProps {
 /**
  * The office flanked by two panels: on the left a plain terminal (the office's
  * own cmd, tied to no agent) to run commands and start other agents from; on
- * the right the selected agent's conversation as chat (ChatPanel).
+ * the right the agents' chats, several open at once (ChatPanel).
  *
  * Each agent's Claude terminal stays mounted, hidden: sending a chat message
  * types into it, and its socket state feeds the card dots.
