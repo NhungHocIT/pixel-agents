@@ -174,18 +174,6 @@
     background: var(--color-accent-bright);
   }
 
-  /* Chat content reads as prose: the system UI face at a body size, beating
-     the base `* { font-pixel }` the same way .xterm does below. --font-chat is
-     set inline by ChatPane from CHAT_FONT_FAMILY. */
-  .chat-text,
-  .chat-text * {
-    font-family: var(--font-chat);
-  }
-  .chat-text {
-    font-size: 14px;
-    line-height: 1.6;
-  }
-
   /* Terminal content must be monospace: Claude Code is a full-screen TUI, and a
      proportional face breaks its column alignment. The base layer's
      `* { font-pixel }` applies FS Pixel Sans to every element -- including the

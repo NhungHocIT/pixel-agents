@@ -32,7 +32,7 @@ import { hooksConsentRequest } from './providers/hook/consentGate.js';
 import { claudeProvider, hookProviderById, hookProviders } from './providers/index.js';
 import { closeAgentShell, hasAgentShell, openAgentShell } from './terminal/agentShell.js';
 import type { PtySessionManager } from './terminal/ptySessionManager.js';
-import { launchStandaloneAgent, resumeExternalAgent } from './terminal/standaloneAgentLauncher.js';
+import { launchStandaloneAgent } from './terminal/standaloneAgentLauncher.js';
 
 type WsSend = (message: Record<string, unknown>) => void;
 
@@ -185,18 +185,6 @@ export function handleClientMessage(
         if (ctx.ptyManager) closeAgentShell(ctx.ptyManager, id);
         runtime.closeAgent(id);
       }
-      break;
-    }
-
-    case 'resumeAgent': {
-      // Take over an adopted agent in a server-owned Claude terminal.
-      // Privileged like launchAgent: it runs Claude as the operator.
-      if (!runtime || !ctx.ptyManager) break;
-      resumeExternalAgent(
-        { store, runtime, ptyManager: ctx.ptyManager, provider: claudeProvider },
-        msg.id as number,
-        { bypassPermissions: adapter?.getSetting(KEY_BYPASS_PERMISSIONS, false) ?? false },
-      );
       break;
     }
 

@@ -548,8 +548,7 @@ export const WS_RECONNECT_DELAYS_MS = [250, 500, 1_000, 2_000, 4_000] as const;
 // which is why xterm's theme lives here rather than next to the component.
 
 // One panel sits left of the office as a flex sibling, in flow (not
-// overlaid): the agents' chats and the office's plain terminal, one view at a
-// time.
+// overlaid): the agents' Claude terminals and the office's plain cmds.
 /** Width the panel starts at, as a fraction of the window; the user can drag
  *  its inner edge to resize. */
 export const TERMINAL_PANEL_DEFAULT_WIDTH_RATIO = 0.36;
@@ -557,11 +556,6 @@ export const TERMINAL_PANEL_DEFAULT_WIDTH_RATIO = 0.36;
 export const SIDE_PANEL_MIN_WIDTH_PX = 240;
 /** The office always keeps at least this much width beside the panel. */
 export const TERMINAL_OFFICE_MIN_WIDTH_PX = 320;
-/** Narrowest a chat column gets before the open chats stack instead of
- *  sitting side by side. */
-export const CHAT_COLUMN_MIN_WIDTH_PX = 300;
-/** How often the chat header re-reads the agent's context gauge. */
-export const CHAT_HEADER_REFRESH_MS = 1000;
 /** Width of the always-visible agent-card bar overlaying the office's right
  *  edge — fits the toggle handle and the stacked agent cards (40px mug shot +
  *  16px close/status column + card chrome ≈ 63px, plus a little air each
@@ -590,11 +584,6 @@ export const MUGSHOT_DISPLAY_PX = MUGSHOT_CROP_SIDE_PX * MUGSHOT_RENDER_ZOOM;
 export const TERMINAL_FONT_FAMILY =
   'ui-monospace, SFMono-Regular, Menlo, Consolas, "DejaVu Sans Mono", monospace';
 export const TERMINAL_FONT_SIZE_PX = 20;
-/** Chat CONTENT (bubbles and the reply box) reads as prose, so it uses the
- *  system UI face — long answers in the pixel font are hard to read. The chat
- *  panel's chrome (tabs, header) stays on the pixel font. */
-export const CHAT_FONT_FAMILY =
-  '"Segoe UI", system-ui, -apple-system, Roboto, "Helvetica Neue", Arial, sans-serif';
 /** Lines xterm retains client-side (independent of the server's replay ring). */
 export const TERMINAL_SCROLLBACK_LINES = 5_000;
 /** Debounce for propagating a resize to the PTY (fit on every frame thrashes it). */

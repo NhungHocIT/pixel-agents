@@ -5,7 +5,6 @@ import { toMajorMinor } from './changelogData.js';
 import { AgentCardBar } from './components/AgentCardBar.js';
 import { BottomToolbar } from './components/BottomToolbar.js';
 import { ChangelogModal } from './components/ChangelogModal.js';
-import type { ChatAgentInfo } from './components/ChatPanel.js';
 import { ConnectionIndicator } from './components/ConnectionIndicator.js';
 import { DebugView } from './components/DebugView.js';
 import { DirectoryModal } from './components/DirectoryModal.js';
@@ -346,17 +345,11 @@ function App() {
     editor.handleToggleEditMode,
   );
 
-  // The chat header's view of an agent: the name its character shows in the
-  // office, its directory, and its context gauge.
-  const chatAgentInfo = useCallback((id: number): ChatAgentInfo => {
+  // A terminal tab's label: the name the agent's character shows in the office.
+  const agentName = useCallback((id: number): string => {
     const ch = getOfficeState().characters.get(id);
-    if (!ch) return { name: `Agent ${id}`, contextTokens: 0, maxContextTokens: 0 };
-    return {
-      name: ch.agentName || (CHARACTER_NAMES[ch.palette] ?? `Agent ${id}`),
-      directoryName: ch.directoryName,
-      contextTokens: ch.contextTokens,
-      maxContextTokens: ch.maxContextTokens,
-    };
+    if (!ch) return `Agent ${id}`;
+    return ch.agentName || (CHARACTER_NAMES[ch.palette] ?? `Agent ${id}`);
   }, []);
 
   const handleCloseAgent = useCallback((id: number) => {
@@ -833,8 +826,8 @@ function App() {
         />
       ) : (
         <>
-          {/* Standalone with a terminal: the office beside one panel (left)
-              holding the agents' chats and a plain terminal. terminalAvailable
+          {/* Standalone with a terminal: the office beside the terminal panel
+              (left) — the agents' Claude terminals and plain cmds. terminalAvailable
               is only ever true when the server reports a working PTY to a
               tokened session, which VS Code's surface never does. Otherwise
               the office fills the window. */}
@@ -851,16 +844,9 @@ function App() {
               widthPx={terminalDrawer.terminalWidthPx}
               onResizeStart={terminalDrawer.onTerminalResizeStart}
               onStatusChange={terminalDrawer.onStatusChange}
-              chatAgentIds={agents}
-              focusedAgentId={focusedAgentId}
-              onResumeAgent={(id) => {
-                // Its Claude terminal starts hidden once the server announces
-                // it, and the chat can then send to it.
-                setTerminalView(id, 'claude');
-                transport.send({ type: 'resumeAgent', id });
-              }}
               onSelectAgent={selectDrawerAgent}
-              infoFor={chatAgentInfo}
+              onCloseAgent={handleCloseAgent}
+              nameFor={agentName}
               statusFor={terminalDrawer.statusFor}
             >
               {officeWithCards}

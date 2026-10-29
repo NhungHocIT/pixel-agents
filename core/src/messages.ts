@@ -56,7 +56,6 @@ export type ClientMessage =
   | FocusAgent
   | CloseAgent
   | OpenShell
-  | ResumeAgent
   | SaveAgentSeats
   | SaveLayout
   | SetSoundEnabled
@@ -411,11 +410,6 @@ export interface CloseAgent {
 
 export interface OpenShell {
   type: 'openShell';
-  id: number;
-}
-
-export interface ResumeAgent {
-  type: 'resumeAgent';
   id: number;
 }
 

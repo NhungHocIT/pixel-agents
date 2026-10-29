@@ -25,7 +25,7 @@ import { startFileWatching } from '../fileWatcher.js';
 import { directoryNameFor, hostDirectory } from '../hostDirectory.js';
 import { assignPaletteIfNeeded } from '../paletteAssigner.js';
 import type { AgentState } from '../types.js';
-import { agentCwd, closeAgentShell } from './agentShell.js';
+import { closeAgentShell } from './agentShell.js';
 import type { PtySessionManager } from './ptySessionManager.js';
 
 export interface LaunchStandaloneAgentDeps {
@@ -157,82 +157,6 @@ export function launchStandaloneAgent(
   startJsonlPoll(deps, id, agent);
 
   return id;
-}
-
-/**
- * Take over an adopted (external) agent: resume its session in a PTY this
- * server owns, so the office can type into it (its Chat and Claude tabs). The
- * agent keeps its id, character and seat; only who hosts the process changes.
- *
- * `claude --resume <id>` keeps the session id, so the transcript already being
- * watched and the hook routing both stay as they are. The original terminal
- * must be quit by the user — two processes on one session fork its history;
- * the UI says so before offering this.
- *
- * Returns false when there is nothing to take over (unknown, already ours, or
- * the terminal is unavailable).
- */
-export function resumeExternalAgent(
-  deps: LaunchStandaloneAgentDeps,
-  agentId: number,
-  options: Pick<LaunchStandaloneAgentOptions, 'bypassPermissions' | 'cols' | 'rows'> = {},
-): boolean {
-  const { store, runtime, ptyManager, provider } = deps;
-  const agent = store.get(agentId);
-  if (!agent || !agent.isExternal || ptyManager.has(agentId)) return false;
-  if (!ptyManager.isAvailable()) {
-    console.error(`[Pixel Agents] Terminal: cannot resume -- ${ptyManager.unavailableReason()}`);
-    return false;
-  }
-
-  const cwd = agentCwd(agent);
-  const launch = provider.buildLaunchCommand?.(agent.sessionId, cwd, {
-    bypassPermissions: options.bypassPermissions,
-    resume: true,
-  });
-  if (!launch) {
-    console.error('[Pixel Agents] Terminal: provider.buildLaunchCommand is not implemented');
-    return false;
-  }
-
-  let session;
-  try {
-    session = ptyManager.create({
-      agentId,
-      command: launch.command,
-      args: launch.args,
-      cwd,
-      env: launch.env,
-      cols: options.cols,
-      rows: options.rows,
-    });
-  } catch (err) {
-    console.error(`[Pixel Agents] Terminal: resume spawn failed: ${String(err)}`);
-    return false;
-  }
-
-  // Ours now, like a launched agent: out of the external stale-check and the
-  // external restore path, and removed when its terminal exits.
-  agent.isExternal = false;
-  agent.cwd = cwd;
-  store.persist();
-
-  console.log(
-    `[Pixel Agents] Terminal: Agent ${agentId} - resumed ${agent.sessionId.slice(0, 8)} (pid ${session.pid}) in ${cwd}`,
-  );
-  store.broadcast({ type: 'terminalSessionOpened', agentId });
-
-  session.onExit((exit) => {
-    console.log(`[Pixel Agents] Terminal: Agent ${agentId} - exited (code ${exit.exitCode})`);
-    store.broadcast({ type: 'terminalSessionClosed', agentId, exitCode: exit.exitCode });
-    closeAgentShell(ptyManager, agentId);
-    if (store.has(agentId)) {
-      runtime.unregisterAgent(agent.sessionId);
-      runtime.closeAgent(agentId);
-    }
-  });
-
-  return true;
 }
 
 /**

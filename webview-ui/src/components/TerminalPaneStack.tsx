@@ -1,4 +1,4 @@
-import type { Ref, RefObject } from 'react';
+import type { Ref } from 'react';
 import { useImperativeHandle, useRef } from 'react';
 
 import type { TerminalConnectionStatus } from '../terminal/terminalClient.js';
@@ -18,9 +18,6 @@ interface TerminalPaneStackProps {
   /** Input into whichever pane is showing — how the mobile key bar types and
    *  pastes. Resolved at call time, so it follows tab switches. */
   inputRef?: Ref<TerminalInputHandle>;
-  /** Every pane's input handle by agent id, kept current — how the Chat tab
-   *  types into an agent's Claude terminal while it is hidden. */
-  inputsRef?: RefObject<Map<number, TerminalInputHandle>>;
 }
 
 /**
@@ -37,10 +34,8 @@ export function TerminalPaneStack({
   fontSizePx,
   autoFocus,
   inputRef,
-  inputsRef,
 }: TerminalPaneStackProps) {
-  const ownInputs = useRef(new Map<number, TerminalInputHandle>());
-  const inputs = inputsRef ?? ownInputs;
+  const inputs = useRef(new Map<number, TerminalInputHandle>());
   const shownRef = useRef(shownAgentId);
   shownRef.current = shownAgentId;
 
@@ -77,7 +72,7 @@ export function TerminalPaneStack({
         onStatusChange={onStatusChange}
         fontSizePx={fontSizePx}
         autoFocus={autoFocus}
-        onRegisterInput={inputRef || inputsRef ? registerInput : undefined}
+        onRegisterInput={inputRef ? registerInput : undefined}
       />
     </div>
   ));
