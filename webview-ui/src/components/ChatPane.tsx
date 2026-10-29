@@ -21,6 +21,9 @@ interface ChatPaneProps {
   isActive: boolean;
   /** The agent's Claude terminal input — a sent message is pasted there and submitted. */
   getInput: (agentId: number) => TerminalInputHandle | undefined;
+  /** False for a session with no Claude terminal here (an external one): the
+   *  conversation reads, but there is nothing to type a reply into. */
+  canSend: boolean;
 }
 
 const iconProps = {
@@ -40,7 +43,7 @@ const iconProps = {
  * the transcript (GET /api/chat/:agentId); sending types into the agent's own
  * Claude terminal, so the Chat and Claude tabs are one session.
  */
-export function ChatPane({ agentId, isActive, getInput }: ChatPaneProps) {
+export function ChatPane({ agentId, isActive, getInput, canSend }: ChatPaneProps) {
   const [messages, setMessages] = useState<ChatMessage[]>([]);
   const [hidden, setHidden] = useState<Set<string>>(new Set());
   const [draft, setDraft] = useState('');
@@ -199,12 +202,17 @@ export function ChatPane({ agentId, isActive, getInput }: ChatPaneProps) {
             onChange={(e) => setDraft(e.target.value)}
             onKeyDown={onKeyDown}
             rows={Math.min(8, Math.max(1, draft.split('\n').length))}
-            placeholder="Nhắn cho Claude… (Enter gửi, Shift+Enter xuống dòng)"
+            disabled={!canSend}
+            placeholder={
+              canSend
+                ? 'Nhắn cho Claude… (Enter gửi, Shift+Enter xuống dòng)'
+                : 'Phiên chạy ngoài app — chỉ xem được, không gửi từ đây'
+            }
             className="flex-1 resize-none bg-transparent text-text outline-none border-none placeholder:text-text-muted"
           />
           <button
             onClick={send}
-            disabled={!draft.trim()}
+            disabled={!canSend || !draft.trim()}
             title="Gửi"
             className="w-32 h-32 shrink-0 flex items-center justify-center rounded-full bg-accent text-white cursor-pointer border-none disabled:opacity-40 disabled:cursor-default"
           >

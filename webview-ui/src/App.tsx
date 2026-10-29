@@ -5,6 +5,7 @@ import { toMajorMinor } from './changelogData.js';
 import { AgentCardBar } from './components/AgentCardBar.js';
 import { BottomToolbar } from './components/BottomToolbar.js';
 import { ChangelogModal } from './components/ChangelogModal.js';
+import type { ChatAgentInfo } from './components/ChatPanel.js';
 import { ConnectionIndicator } from './components/ConnectionIndicator.js';
 import { DebugView } from './components/DebugView.js';
 import { DirectoryModal } from './components/DirectoryModal.js';
@@ -20,7 +21,7 @@ import { Button } from './components/ui/Button.js';
 import { Modal } from './components/ui/Modal.js';
 import { VersionIndicator } from './components/VersionIndicator.js';
 import { ZoomControls } from './components/ZoomControls.js';
-import { OFFICE_CANVAS_TEST_ID } from './constants.js';
+import { CHARACTER_NAMES, OFFICE_CANVAS_TEST_ID } from './constants.js';
 import { useDirectoryEditor } from './hooks/useDirectoryEditor.js';
 import { useEditorActions } from './hooks/useEditorActions.js';
 import { useEditorKeyboard } from './hooks/useEditorKeyboard.js';
@@ -343,6 +344,19 @@ function App() {
     useCallback(() => setEditorTickForKeyboard((n) => n + 1), []),
     editor.handleToggleEditMode,
   );
+
+  // The chat header's view of an agent: the name its character shows in the
+  // office, its directory, and its context gauge.
+  const chatAgentInfo = useCallback((id: number): ChatAgentInfo => {
+    const ch = getOfficeState().characters.get(id);
+    if (!ch) return { name: `Agent ${id}`, contextTokens: 0, maxContextTokens: 0 };
+    return {
+      name: ch.agentName || (CHARACTER_NAMES[ch.palette] ?? `Agent ${id}`),
+      directoryName: ch.directoryName,
+      contextTokens: ch.contextTokens,
+      maxContextTokens: ch.maxContextTokens,
+    };
+  }, []);
 
   const handleCloseAgent = useCallback((id: number) => {
     transport.send({ type: 'closeAgent', id });
@@ -748,9 +762,32 @@ function App() {
     </div>
   );
 
+  // The office with the agent-card bar overlaying its right edge. The cards
+  // list every agent in the office, external sessions included — the
+  // at-a-glance "who needs attention" strip. In standalone a card click opens
+  // that agent's terminal and chat beside the office; otherwise (VS Code, or a
+  // watch-only standalone session) it raises the agent's editor terminal
+  // where there is one.
+  const officeWithCards = (
+    <div className="flex-1 min-h-0 min-w-0 flex">
+      {officeRegion}
+      {!isDebugMode && (
+        <AgentCardBar
+          agentIds={agents}
+          activeAgentId={terminalAvailable ? terminalDrawer.shownAgentId : null}
+          focusedAgentId={focusedAgentId}
+          getAppearance={terminalDrawer.getAppearance}
+          statusFor={terminalDrawer.statusFor}
+          onSelect={terminalAvailable ? openAgentTerminal : handleCardSelect}
+          onClose={handleCloseAgent}
+        />
+      )}
+    </div>
+  );
+
   return (
-    // Desktop: a column — the office (agents) on top, flexing to fill the
-    // space above the terminal panel. Mobile: a column — the sliding
+    // Desktop: a column whose one row is the office, flanked in standalone by
+    // the terminal and chat panels. Mobile: a column — the sliding
     // office/terminal track on top, the agent-card bar pinned along the bottom.
     <div
       className="w-full h-full relative overflow-hidden flex flex-col"
@@ -776,46 +813,38 @@ function App() {
         />
       ) : (
         <>
-          {/* Top: the office with the agent-card bar overlaying its right edge.
-              The cards list every agent in the office, external sessions
-              included — the at-a-glance "who needs attention" strip. In
-              standalone a card click opens that agent's cmd below; otherwise
-              (VS Code, or a watch-only standalone session) it raises the
-              agent's editor terminal where there is one. */}
-          <div className="flex-1 min-h-0 flex">
-            {officeRegion}
-            {!isDebugMode && (
-              <AgentCardBar
-                agentIds={agents}
-                activeAgentId={terminalAvailable ? terminalDrawer.shownAgentId : null}
-                focusedAgentId={focusedAgentId}
-                getAppearance={terminalDrawer.getAppearance}
-                statusFor={terminalDrawer.statusFor}
-                onSelect={terminalAvailable ? openAgentTerminal : handleCardSelect}
-                onClose={handleCloseAgent}
-              />
-            )}
-          </div>
-
-          {/* Bottom: the selected agent's terminal. Standalone with a terminal
-              only: terminalAvailable is only ever true when the server reports
-              a working PTY to a tokened session, which VS Code's surface never
-              does. In flow as a flex sibling so the office region reflows
-              above it instead of being overlaid. */}
-          {terminalAvailable && (
+          {/* Standalone with a terminal: the office between the selected
+              agent's terminal (left) and its chat (right). terminalAvailable
+              is only ever true when the server reports a working PTY to a
+              tokened session, which VS Code's surface never does. Otherwise
+              the office fills the window. */}
+          {terminalAvailable ? (
             <TerminalDrawer
               claudeAgentIds={terminalAgentIds}
               shellAgentIds={shellAgentIds}
-              viewFor={(id) => terminalViews[id] ?? 'chat'}
+              viewFor={(id) => terminalViews[id] ?? 'claude'}
               onSelectView={setTerminalView}
               onOpenShell={handleOpenShell}
               shownAgentId={terminalDrawer.shownAgentId}
               isOpen={terminalDrawer.isOpen}
               onClosePanel={terminalDrawer.close}
-              heightPx={terminalDrawer.heightPx}
-              onResizeStart={terminalDrawer.onResizeStart}
+              widthPx={terminalDrawer.terminalWidthPx}
+              onResizeStart={terminalDrawer.onTerminalResizeStart}
               onStatusChange={terminalDrawer.onStatusChange}
-            />
+              isChatOpen={terminalDrawer.isChatOpen}
+              chatWidthPx={terminalDrawer.chatWidthPx}
+              onChatResizeStart={terminalDrawer.onChatResizeStart}
+              onCloseChat={terminalDrawer.closeChat}
+              chatAgentIds={agents}
+              focusedAgentId={focusedAgentId}
+              onSelectAgent={openAgentTerminal}
+              infoFor={chatAgentInfo}
+              statusFor={terminalDrawer.statusFor}
+            >
+              {officeWithCards}
+            </TerminalDrawer>
+          ) : (
+            officeWithCards
           )}
         </>
       )}

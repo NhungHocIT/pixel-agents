@@ -1,4 +1,5 @@
 import type { CardVariant } from './cardBar.js';
+import { STATUS_DOT } from './cardBar.js';
 import { CharacterMugShot } from './CharacterMugShot.js';
 import { Button } from './ui/Button.js';
 
@@ -13,13 +14,6 @@ export type AgentActivity = 'idle' | 'working' | 'attention';
 
 /** Activity plus the drawer-owned "connection broken" state. */
 export type TabStatus = AgentActivity | 'disconnected';
-
-const STATUS_DOT: Record<TabStatus, string> = {
-  idle: 'bg-status-success', // green — turn complete, nothing pending
-  working: 'bg-accent-bright', // blue — actively running
-  attention: 'bg-status-permission', // yellow — needs permission or input
-  disconnected: 'bg-status-error', // red — terminal socket dropped
-};
 
 const CARD_VARIANT: Record<CardVariant, string> = {
   default: 'bg-btn-bg border-transparent hover:bg-btn-hover',

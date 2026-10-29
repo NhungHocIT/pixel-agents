@@ -547,23 +547,24 @@ export const WS_RECONNECT_DELAYS_MS = [250, 500, 1_000, 2_000, 4_000] as const;
 // This file is the one place inline colors are allowed (see eslint.config.js),
 // which is why xterm's theme lives here rather than next to the component.
 
-// The panel docks along the bottom as a full-width row, in flow below the
-// office region (which flexes to fill the rest) — not overlaid on top of it.
-/** Open height the panel starts at, as a fraction of the window (0.5 = an even
- *  split with the office); the user can drag to resize. */
-export const TERMINAL_DRAWER_DEFAULT_HEIGHT_RATIO = 0.5;
-/** Clamp for the drag: never shorter than this. */
-export const TERMINAL_DRAWER_MIN_HEIGHT_PX = 120;
-/** Clamp for the drag: never taller than this fraction of the window. */
-export const TERMINAL_DRAWER_MAX_HEIGHT_RATIO = 0.75;
-/** The office always keeps at least this much height above the panel. */
-export const TERMINAL_OFFICE_MIN_HEIGHT_PX = 160;
+// Two panels flank the office as flex siblings, in flow (not overlaid): the
+// selected agent's terminal on the left, its conversation as chat on the right.
+/** Width each panel starts at, as a fraction of the window; the user can drag
+ *  its inner edge to resize. */
+export const TERMINAL_PANEL_DEFAULT_WIDTH_RATIO = 0.27;
+export const CHAT_PANEL_DEFAULT_WIDTH_RATIO = 0.33;
+/** Clamp for the drag: neither panel narrower than this. */
+export const SIDE_PANEL_MIN_WIDTH_PX = 240;
+/** The office always keeps at least this much width between the panels. */
+export const TERMINAL_OFFICE_MIN_WIDTH_PX = 320;
+/** How often the chat header re-reads the agent's context gauge. */
+export const CHAT_HEADER_REFRESH_MS = 1000;
 /** Width of the always-visible agent-card bar overlaying the office's right
  *  edge — fits the toggle handle and the stacked agent cards (40px mug shot +
  *  16px close/status column + card chrome ≈ 63px, plus a little air each
  *  side). */
 export const TERMINAL_SIDEBAR_WIDTH_PX = 72;
-/** Grab height of the drag handle on the panel's top edge. */
+/** Grab width of the drag handle on a side panel's inner edge. */
 export const TERMINAL_DRAWER_RESIZE_HANDLE_PX = 6;
 
 // Mug shot: a square crop of the agent's front-facing sprite, focused on the

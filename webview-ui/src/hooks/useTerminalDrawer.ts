@@ -3,10 +3,10 @@ import { useCallback, useEffect, useRef, useState } from 'react';
 
 import type { AgentActivity, AgentAppearance, TabStatus } from '../components/AgentCard.js';
 import {
-  TERMINAL_DRAWER_DEFAULT_HEIGHT_RATIO,
-  TERMINAL_DRAWER_MAX_HEIGHT_RATIO,
-  TERMINAL_DRAWER_MIN_HEIGHT_PX,
-  TERMINAL_OFFICE_MIN_HEIGHT_PX,
+  CHAT_PANEL_DEFAULT_WIDTH_RATIO,
+  SIDE_PANEL_MIN_WIDTH_PX,
+  TERMINAL_OFFICE_MIN_WIDTH_PX,
+  TERMINAL_PANEL_DEFAULT_WIDTH_RATIO,
 } from '../constants.js';
 import type { OfficeState } from '../office/engine/officeState.js';
 import type { ToolActivity } from '../office/types.js';
@@ -32,8 +32,12 @@ export interface TerminalDrawerController {
    *  clicked). null only when there are no terminals. Both shells and the
    *  mobile key bar read this one resolution. */
   shownAgentId: number | null;
+  /** The terminal panel (left of the office) is open. */
   isOpen: boolean;
-  heightPx: number;
+  /** The chat panel (right of the office) is open. */
+  isChatOpen: boolean;
+  terminalWidthPx: number;
+  chatWidthPx: number;
   /** The newest terminal the drawer saw appear (launch answered, or a reload
    *  re-announcing live sessions) — it became the active tab. `seq` makes
    *  every appearance a distinct value for effects to key on. */
@@ -46,7 +50,10 @@ export interface TerminalDrawerController {
    *  and the office stay in sync. */
   select: (agentId: number) => void;
   close: () => void;
-  onResizeStart: (e: ReactMouseEvent) => void;
+  closeChat: () => void;
+  /** Mousedown on a panel's inner-edge drag handle. */
+  onTerminalResizeStart: (e: ReactMouseEvent) => void;
+  onChatResizeStart: (e: ReactMouseEvent) => void;
   getAppearance: (agentId: number) => AgentAppearance;
   /** Card status dot: 'disconnected' (red) for a terminal whose socket
    *  dropped, otherwise the agent's activity; null before its first activity. */
@@ -56,17 +63,18 @@ export interface TerminalDrawerController {
 }
 
 /**
- * The drawer height that fits a viewport: the office above keeps at least
- * TERMINAL_OFFICE_MIN_HEIGHT_PX (the agents stay visible, and the cards
- * overlaying its right edge are the way to switch agents), so on a short
- * window the minimum gives way to that.
+ * A side panel's width that fits beside the office and the other panel: the
+ * office keeps at least TERMINAL_OFFICE_MIN_WIDTH_PX (the agents stay visible,
+ * and the cards overlaying its right edge are the way to switch agents), so on
+ * a narrow window the panel minimum gives way to that.
  */
-export function clampDrawerHeight(preferredPx: number, viewportPx: number): number {
-  const maxPx = Math.min(
-    viewportPx * TERMINAL_DRAWER_MAX_HEIGHT_RATIO,
-    viewportPx - TERMINAL_OFFICE_MIN_HEIGHT_PX,
-  );
-  return Math.max(0, Math.min(maxPx, Math.max(TERMINAL_DRAWER_MIN_HEIGHT_PX, preferredPx)));
+export function clampPanelWidth(
+  preferredPx: number,
+  viewportPx: number,
+  otherPanelPx: number,
+): number {
+  const maxPx = viewportPx - otherPanelPx - TERMINAL_OFFICE_MIN_WIDTH_PX;
+  return Math.max(0, Math.min(maxPx, Math.max(SIDE_PANEL_MIN_WIDTH_PX, preferredPx)));
 }
 
 /**
@@ -86,21 +94,31 @@ export function useTerminalDrawer({
   const [activeAgentId, setActiveAgentId] = useState<number | null>(null);
   const [lastOpened, setLastOpened] = useState<{ agentId: number; seq: number } | null>(null);
   const [isOpen, setIsOpen] = useState(false);
-  // The height the user asked for; what renders is that clamped to the
+  // The chat reads any agent's transcript, so it shows from the start.
+  const [isChatOpen, setIsChatOpen] = useState(true);
+  // The widths the user asked for; what renders is those clamped to the
   // viewport, re-derived on every window resize so a window that shrinks
-  // while the drawer is open never pushes the office (and its agents) out.
-  // Null until the user drags: the panel then keeps an even split with the
-  // office as the window resizes.
-  const [preferredHeightPx, setPreferredHeightPx] = useState<number | null>(null);
-  const [viewportPx, setViewportPx] = useState(() => window.innerHeight);
+  // while the panels are open never pushes the office (and its agents) out.
+  // Null until the user drags: the panel then keeps its share of the window.
+  const [preferredTerminalPx, setPreferredTerminalPx] = useState<number | null>(null);
+  const [preferredChatPx, setPreferredChatPx] = useState<number | null>(null);
+  const [viewportPx, setViewportPx] = useState(() => window.innerWidth);
   useEffect(() => {
-    const onResize = () => setViewportPx(window.innerHeight);
+    const onResize = () => setViewportPx(window.innerWidth);
     window.addEventListener('resize', onResize);
     return () => window.removeEventListener('resize', onResize);
   }, []);
-  const heightPx = clampDrawerHeight(
-    preferredHeightPx ?? viewportPx * TERMINAL_DRAWER_DEFAULT_HEIGHT_RATIO,
+  // The terminal is sized first against the chat's minimum; the chat then
+  // takes what the office leaves it. A closed panel takes no room.
+  const terminalWidthPx = clampPanelWidth(
+    preferredTerminalPx ?? viewportPx * TERMINAL_PANEL_DEFAULT_WIDTH_RATIO,
     viewportPx,
+    isChatOpen ? SIDE_PANEL_MIN_WIDTH_PX : 0,
+  );
+  const chatWidthPx = clampPanelWidth(
+    preferredChatPx ?? viewportPx * CHAT_PANEL_DEFAULT_WIDTH_RATIO,
+    viewportPx,
+    isOpen ? terminalWidthPx : 0,
   );
   const [connStatuses, setConnStatuses] = useState<Record<number, TerminalConnectionStatus>>({});
 
@@ -122,6 +140,7 @@ export function useTerminalDrawer({
     const newest = added[added.length - 1];
     setActiveAgentId(newest);
     setIsOpen(true);
+    setIsChatOpen(true);
     setLastOpened((prev) => ({ agentId: newest, seq: (prev?.seq ?? 0) + 1 }));
   }, [terminalAgentIds]);
 
@@ -130,6 +149,7 @@ export function useTerminalDrawer({
       if (!terminalAgentIds.includes(agentId)) return;
       setActiveAgentId(agentId);
       setIsOpen(true);
+      setIsChatOpen(true);
     },
     [terminalAgentIds],
   );
@@ -138,25 +158,32 @@ export function useTerminalDrawer({
     (agentId: number) => {
       setActiveAgentId(agentId);
       setIsOpen(true);
+      setIsChatOpen(true);
       getOfficeState().selectAndFollow(agentId);
     },
     [getOfficeState],
   );
 
   const close = useCallback(() => setIsOpen(false), []);
+  const closeChat = useCallback(() => setIsChatOpen(false), []);
 
-  // Drag the panel's top edge to resize. The office region is flex-1 above it,
-  // so it reflows to fill whatever height is left — the canvas ResizeObserver
-  // repaints and re-centres the camera on the smaller region automatically.
-  const onResizeStart = useCallback(
-    (e: ReactMouseEvent) => {
+  // Drag a panel's inner edge to resize. The office region is flex-1 between
+  // them, so it reflows to fill whatever width is left — the canvas
+  // ResizeObserver repaints and re-centres the camera automatically.
+  // `direction` is +1 when dragging right grows the panel (the left one).
+  const startResize = useCallback(
+    (
+      e: ReactMouseEvent,
+      startWidth: number,
+      direction: 1 | -1,
+      otherPanelPx: number,
+      setPreferred: (px: number) => void,
+    ) => {
       e.preventDefault();
-      const startY = e.clientY;
-      const startHeight = heightPx;
+      const startX = e.clientX;
       const onMove = (ev: MouseEvent) => {
-        // Dragging up (smaller clientY) grows the panel.
-        const next = startHeight + (startY - ev.clientY);
-        setPreferredHeightPx(clampDrawerHeight(next, window.innerHeight));
+        const next = startWidth + direction * (ev.clientX - startX);
+        setPreferred(clampPanelWidth(next, window.innerWidth, otherPanelPx));
       };
       const onUp = () => {
         window.removeEventListener('mousemove', onMove);
@@ -168,7 +195,17 @@ export function useTerminalDrawer({
       window.addEventListener('mousemove', onMove);
       window.addEventListener('mouseup', onUp);
     },
-    [heightPx],
+    [],
+  );
+  const onTerminalResizeStart = useCallback(
+    (e: ReactMouseEvent) =>
+      startResize(e, terminalWidthPx, 1, isChatOpen ? chatWidthPx : 0, setPreferredTerminalPx),
+    [startResize, terminalWidthPx, chatWidthPx, isChatOpen],
+  );
+  const onChatResizeStart = useCallback(
+    (e: ReactMouseEvent) =>
+      startResize(e, chatWidthPx, -1, isOpen ? terminalWidthPx : 0, setPreferredChatPx),
+    [startResize, chatWidthPx, terminalWidthPx, isOpen],
   );
 
   // A terminal tab shows the agent's character (front-facing mug shot), so it
@@ -217,11 +254,15 @@ export function useTerminalDrawer({
     shownAgentId,
     lastOpened,
     isOpen,
-    heightPx,
+    isChatOpen,
+    terminalWidthPx,
+    chatWidthPx,
     reveal,
     select,
     close,
-    onResizeStart,
+    closeChat,
+    onTerminalResizeStart,
+    onChatResizeStart,
     getAppearance,
     statusFor,
     onStatusChange,
