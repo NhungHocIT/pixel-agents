@@ -833,8 +833,8 @@ function App() {
         />
       ) : (
         <>
-          {/* Standalone with a terminal: the office between the selected
-              agent's terminal (left) and its chat (right). terminalAvailable
+          {/* Standalone with a terminal: the office beside one panel (left)
+              holding the agents' chats and a plain terminal. terminalAvailable
               is only ever true when the server reports a working PTY to a
               tokened session, which VS Code's surface never does. Otherwise
               the office fills the window. */}
@@ -851,10 +851,6 @@ function App() {
               widthPx={terminalDrawer.terminalWidthPx}
               onResizeStart={terminalDrawer.onTerminalResizeStart}
               onStatusChange={terminalDrawer.onStatusChange}
-              isChatOpen={terminalDrawer.isChatOpen}
-              chatWidthPx={terminalDrawer.chatWidthPx}
-              onChatResizeStart={terminalDrawer.onChatResizeStart}
-              onCloseChat={terminalDrawer.closeChat}
               chatAgentIds={agents}
               focusedAgentId={focusedAgentId}
               onResumeAgent={(id) => {

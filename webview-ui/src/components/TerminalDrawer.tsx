@@ -20,7 +20,7 @@ import { Button } from './ui/Button.js';
 export type TerminalView = 'claude' | 'shell';
 
 interface TerminalDrawerProps {
-  /** The office region, laid out between the two panels. */
+  /** The office region, laid out right of the panel. */
   children: ReactNode;
   /** Agent ids with a live Claude PTY — mounted hidden, for the chat to type into. */
   claudeAgentIds: number[];
@@ -33,18 +33,14 @@ interface TerminalDrawerProps {
   /** The agent the user picked last (card, character or chat tab). */
   selectedAgentId: number | null;
   isOpen: boolean;
-  /** Close the terminal panel (the "<" in its top-right corner). */
+  /** Close the panel (the "<" in its top-right corner). */
   onClosePanel: () => void;
   /** Open width in px (user-resizable). Ignored while collapsed. */
   widthPx: number;
   /** Mousedown on the inner-edge drag handle; the hook owns the resize gesture. */
   onResizeStart: (e: ReactMouseEvent) => void;
   onStatusChange: (agentId: number, status: TerminalConnectionStatus) => void;
-  isChatOpen: boolean;
-  chatWidthPx: number;
-  onChatResizeStart: (e: ReactMouseEvent) => void;
-  onCloseChat: () => void;
-  /** Every agent in the office — the chat panel's tabs. */
+  /** Every agent in the office — the Chat view's tabs. */
   chatAgentIds: number[];
   /** The agent whose character is selected in the office. */
   focusedAgentId: number | null;
@@ -57,9 +53,10 @@ interface TerminalDrawerProps {
 }
 
 /**
- * The office flanked by two panels: on the left a plain terminal (the office's
- * own cmd, tied to no agent) to run commands and start other agents from; on
- * the right the agents' chats, several open at once (ChatPanel).
+ * The office with one panel on its left, showing one of two views: the
+ * agents' chats, several open at once (ChatPanel), or a plain terminal (the
+ * office's own cmd, tied to no agent) to run commands and start other agents
+ * from. Both views stay mounted, so drafts and xterm buffers survive a switch.
  *
  * Each agent's Claude terminal stays mounted, hidden: sending a chat message
  * types into it, and its socket state feeds the card dots.
@@ -80,10 +77,6 @@ export function TerminalDrawer({
   widthPx,
   onResizeStart,
   onStatusChange,
-  isChatOpen,
-  chatWidthPx,
-  onChatResizeStart,
-  onCloseChat,
   chatAgentIds,
   focusedAgentId,
   onResumeAgent,
@@ -92,6 +85,7 @@ export function TerminalDrawer({
   statusFor,
 }: TerminalDrawerProps) {
   const inputs = useRef(new Map<number, TerminalInputHandle>());
+  const [view, setView] = useState<'chat' | 'terminal'>('chat');
 
   // The office's cmds, one tab each in open order; the first stays "cmd".
   const shellIds = [...officeShellIds].sort((a, b) => a - b);
@@ -127,10 +121,10 @@ export function TerminalDrawer({
 
   return (
     <div className="flex-1 min-h-0 flex">
-      {/* Terminal panel — left of the office. display:none (not unmount)
-          while closed: the panes stay mounted so xterm buffers and sockets
-          survive; unmounting would drop the scrollback and force a reconnect
-          on every toggle. TerminalPane skips fit() at zero size, and the
+      {/* The panel — left of the office. display:none (not unmount) while
+          closed: the panes stay mounted so xterm buffers and sockets survive;
+          unmounting would drop the scrollback and force a reconnect on every
+          toggle. TerminalPane skips fit() at zero size, and the
           ResizeObserver re-fits on reopen. */}
       <div
         className={`relative h-full shrink-0 flex-col bg-bg border-r-2 border-border ${isOpen ? 'flex' : 'hidden'}`}
@@ -144,99 +138,128 @@ export function TerminalDrawer({
           title="Drag to resize"
         />
 
-        {/* One tab per cmd, "+" for another. */}
+        {/* Chat | Terminal, and "<" to close the panel. */}
         <div className="flex items-center gap-2 px-8 pt-6 shrink-0 border-b-2 border-border">
-          <div className="flex-1 min-w-0 flex items-center gap-2 overflow-x-auto">
-            {shellIds.map((id, i) => (
-              <div
-                key={id}
-                onClick={() => setPickedShellId(id)}
-                className={`shrink-0 flex items-center gap-4 pl-8 pr-2 py-2 cursor-pointer border-2 border-b-0 whitespace-nowrap ${
-                  id === shownShellId
-                    ? 'bg-active-bg border-accent text-text'
-                    : 'bg-transparent border-transparent text-text-muted hover:text-text hover:bg-btn-hover'
-                }`}
-              >
-                {shellLabel(id, i)}
-                <Button
-                  variant="ghost"
-                  size="icon"
-                  onClick={(e) => {
-                    e.stopPropagation();
-                    onCloseOfficeShell(id);
-                  }}
-                  className="hover:bg-btn-hover"
-                  title="Đóng cmd này"
-                >
-                  ×
-                </Button>
-              </div>
-            ))}
-            <Button
-              variant="ghost"
-              size="icon"
-              onClick={addShell}
-              className="shrink-0 hover:bg-btn-hover"
-              title="Mở cmd mới"
-            >
-              +
-            </Button>
-          </div>
+          <button
+            onClick={() => setView('chat')}
+            className={`shrink-0 px-10 py-4 cursor-pointer border-2 border-b-0 whitespace-nowrap ${
+              view === 'chat'
+                ? 'bg-active-bg border-accent text-text'
+                : 'bg-transparent border-transparent text-text-muted hover:text-text hover:bg-btn-hover'
+            }`}
+          >
+            Chat
+          </button>
+          <button
+            onClick={() => setView('terminal')}
+            className={`shrink-0 px-10 py-4 cursor-pointer border-2 border-b-0 whitespace-nowrap ${
+              view === 'terminal'
+                ? 'bg-active-bg border-accent text-text'
+                : 'bg-transparent border-transparent text-text-muted hover:text-text hover:bg-btn-hover'
+            }`}
+          >
+            Terminal
+          </button>
+          <div className="flex-1" />
           <Button
             variant="ghost"
             size="icon"
             onClick={onClosePanel}
             className="shrink-0 hover:bg-btn-hover"
-            title="Close terminal"
+            title="Close panel"
           >
             {'<'}
           </Button>
         </div>
 
-        <div className="relative flex-1 min-h-0 p-4">
-          {shownShellId === null && (
-            <div className="absolute inset-4 flex flex-col gap-8 items-center justify-center text-sm text-text-muted">
-              <span>Terminal chưa chạy</span>
+        <ChatPanel
+          agentIds={chatAgentIds}
+          sendableAgentIds={claudeAgentIds}
+          onTakeOver={onResumeAgent}
+          shownAgentId={chatAgentId}
+          isOpen={isOpen && view === 'chat'}
+          onSelectAgent={onSelectAgent}
+          infoFor={infoFor}
+          statusFor={statusFor}
+          inputsRef={inputs}
+        />
+        {view === 'chat' && chatAgentIds.length === 0 && (
+          <div className="flex-1 flex items-center justify-center text-sm text-text-muted">
+            Chưa có agent nào
+          </div>
+        )}
+
+        <div className={`flex-1 min-h-0 flex-col ${view === 'terminal' ? 'flex' : 'hidden'}`}>
+          {/* One tab per cmd, "+" for another. */}
+          <div className="flex items-center gap-2 px-8 pt-6 shrink-0 border-b-2 border-border">
+            <div className="flex-1 min-w-0 flex items-center gap-2 overflow-x-auto">
+              {shellIds.map((id, i) => (
+                <div
+                  key={id}
+                  onClick={() => setPickedShellId(id)}
+                  className={`shrink-0 flex items-center gap-4 pl-8 pr-2 py-2 cursor-pointer border-2 border-b-0 whitespace-nowrap ${
+                    id === shownShellId
+                      ? 'bg-active-bg border-accent text-text'
+                      : 'bg-transparent border-transparent text-text-muted hover:text-text hover:bg-btn-hover'
+                  }`}
+                >
+                  {shellLabel(id, i)}
+                  <Button
+                    variant="ghost"
+                    size="icon"
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      onCloseOfficeShell(id);
+                    }}
+                    className="hover:bg-btn-hover"
+                    title="Đóng cmd này"
+                  >
+                    ×
+                  </Button>
+                </div>
+              ))}
               <Button
-                variant="default"
-                size="sm"
-                onClick={() => onOpenOfficeShell(OFFICE_SHELL_ID)}
+                variant="ghost"
+                size="icon"
+                onClick={addShell}
+                className="shrink-0 hover:bg-btn-hover"
+                title="Mở cmd mới"
               >
-                Mở terminal
+                +
               </Button>
             </div>
-          )}
-          <TerminalPaneStack
-            agentIds={paneIds}
-            shownAgentId={shownShellId !== null ? shellTerminalId(shownShellId) : null}
-            autoFocus
-            onStatusChange={(id, status) => {
-              // Card dots follow the agent's Claude socket
-              if (claudeAgentIds.includes(id)) onStatusChange(id, status);
-            }}
-            paneClassName="inset-4"
-            inputsRef={inputs}
-          />
+          </div>
+
+          <div className="relative flex-1 min-h-0 p-4">
+            {shownShellId === null && (
+              <div className="absolute inset-4 flex flex-col gap-8 items-center justify-center text-sm text-text-muted">
+                <span>Terminal chưa chạy</span>
+                <Button
+                  variant="default"
+                  size="sm"
+                  onClick={() => onOpenOfficeShell(OFFICE_SHELL_ID)}
+                >
+                  Mở terminal
+                </Button>
+              </div>
+            )}
+            <TerminalPaneStack
+              agentIds={paneIds}
+              shownAgentId={shownShellId !== null ? shellTerminalId(shownShellId) : null}
+              autoFocus={view === 'terminal'}
+              onStatusChange={(id, status) => {
+                // Card dots follow the agent's Claude socket
+                if (claudeAgentIds.includes(id)) onStatusChange(id, status);
+              }}
+              paneClassName="inset-4"
+              inputsRef={inputs}
+            />
+          </div>
         </div>
       </div>
 
-      {/* Middle: the office, flexing to fill what the panels leave. */}
+      {/* Right: the office, flexing to fill what the panel leaves. */}
       <div className="flex-1 min-w-0 flex overflow-hidden">{children}</div>
-
-      <ChatPanel
-        agentIds={chatAgentIds}
-        sendableAgentIds={claudeAgentIds}
-        onTakeOver={onResumeAgent}
-        shownAgentId={chatAgentId}
-        isOpen={isChatOpen}
-        widthPx={chatWidthPx}
-        onResizeStart={onChatResizeStart}
-        onClose={onCloseChat}
-        onSelectAgent={onSelectAgent}
-        infoFor={infoFor}
-        statusFor={statusFor}
-        inputsRef={inputs}
-      />
     </div>
   );
 }

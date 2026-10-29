@@ -3,7 +3,6 @@ import { useCallback, useEffect, useRef, useState } from 'react';
 
 import type { AgentActivity, AgentAppearance, TabStatus } from '../components/AgentCard.js';
 import {
-  CHAT_PANEL_DEFAULT_WIDTH_RATIO,
   SIDE_PANEL_MIN_WIDTH_PX,
   TERMINAL_OFFICE_MIN_WIDTH_PX,
   TERMINAL_PANEL_DEFAULT_WIDTH_RATIO,
@@ -32,12 +31,9 @@ export interface TerminalDrawerController {
    *  clicked). null only when there are no terminals. Both shells and the
    *  mobile key bar read this one resolution. */
   shownAgentId: number | null;
-  /** The terminal panel (left of the office) is open. */
+  /** The side panel (left of the office: chat and terminal) is open. */
   isOpen: boolean;
-  /** The chat panel (right of the office) is open. */
-  isChatOpen: boolean;
   terminalWidthPx: number;
-  chatWidthPx: number;
   /** The newest terminal the drawer saw appear (launch answered, or a reload
    *  re-announcing live sessions) — it became the active tab. `seq` makes
    *  every appearance a distinct value for effects to key on. */
@@ -50,10 +46,8 @@ export interface TerminalDrawerController {
    *  and the office stay in sync. */
   select: (agentId: number) => void;
   close: () => void;
-  closeChat: () => void;
-  /** Mousedown on a panel's inner-edge drag handle. */
+  /** Mousedown on the panel's inner-edge drag handle. */
   onTerminalResizeStart: (e: ReactMouseEvent) => void;
-  onChatResizeStart: (e: ReactMouseEvent) => void;
   getAppearance: (agentId: number) => AgentAppearance;
   /** Card status dot: 'disconnected' (red) for a terminal whose socket
    *  dropped, otherwise the agent's activity; null before its first activity. */
@@ -93,32 +87,23 @@ export function useTerminalDrawer({
 }: TerminalDrawerInputs): TerminalDrawerController {
   const [activeAgentId, setActiveAgentId] = useState<number | null>(null);
   const [lastOpened, setLastOpened] = useState<{ agentId: number; seq: number } | null>(null);
-  const [isOpen, setIsOpen] = useState(false);
-  // The chat reads any agent's transcript, so it shows from the start.
-  const [isChatOpen, setIsChatOpen] = useState(true);
-  // The widths the user asked for; what renders is those clamped to the
+  // The chat reads any agent's transcript, so the panel shows from the start.
+  const [isOpen, setIsOpen] = useState(true);
+  // The width the user asked for; what renders is that clamped to the
   // viewport, re-derived on every window resize so a window that shrinks
-  // while the panels are open never pushes the office (and its agents) out.
+  // while the panel is open never pushes the office (and its agents) out.
   // Null until the user drags: the panel then keeps its share of the window.
   const [preferredTerminalPx, setPreferredTerminalPx] = useState<number | null>(null);
-  const [preferredChatPx, setPreferredChatPx] = useState<number | null>(null);
   const [viewportPx, setViewportPx] = useState(() => window.innerWidth);
   useEffect(() => {
     const onResize = () => setViewportPx(window.innerWidth);
     window.addEventListener('resize', onResize);
     return () => window.removeEventListener('resize', onResize);
   }, []);
-  // The terminal is sized first against the chat's minimum; the chat then
-  // takes what the office leaves it. A closed panel takes no room.
   const terminalWidthPx = clampPanelWidth(
     preferredTerminalPx ?? viewportPx * TERMINAL_PANEL_DEFAULT_WIDTH_RATIO,
     viewportPx,
-    isChatOpen ? SIDE_PANEL_MIN_WIDTH_PX : 0,
-  );
-  const chatWidthPx = clampPanelWidth(
-    preferredChatPx ?? viewportPx * CHAT_PANEL_DEFAULT_WIDTH_RATIO,
-    viewportPx,
-    isOpen ? terminalWidthPx : 0,
+    0,
   );
   const [connStatuses, setConnStatuses] = useState<Record<number, TerminalConnectionStatus>>({});
 
@@ -140,7 +125,6 @@ export function useTerminalDrawer({
     const newest = added[added.length - 1];
     setActiveAgentId(newest);
     setIsOpen(true);
-    setIsChatOpen(true);
     setLastOpened((prev) => ({ agentId: newest, seq: (prev?.seq ?? 0) + 1 }));
   }, [terminalAgentIds]);
 
@@ -149,7 +133,6 @@ export function useTerminalDrawer({
       if (!terminalAgentIds.includes(agentId)) return;
       setActiveAgentId(agentId);
       setIsOpen(true);
-      setIsChatOpen(true);
     },
     [terminalAgentIds],
   );
@@ -158,17 +141,15 @@ export function useTerminalDrawer({
     (agentId: number) => {
       setActiveAgentId(agentId);
       setIsOpen(true);
-      setIsChatOpen(true);
       getOfficeState().selectAndFollow(agentId);
     },
     [getOfficeState],
   );
 
   const close = useCallback(() => setIsOpen(false), []);
-  const closeChat = useCallback(() => setIsChatOpen(false), []);
 
-  // Drag a panel's inner edge to resize. The office region is flex-1 between
-  // them, so it reflows to fill whatever width is left — the canvas
+  // Drag the panel's inner edge to resize. The office region is flex-1 beside
+  // it, so it reflows to fill whatever width is left — the canvas
   // ResizeObserver repaints and re-centres the camera automatically.
   // `direction` is +1 when dragging right grows the panel (the left one).
   const startResize = useCallback(
@@ -198,14 +179,8 @@ export function useTerminalDrawer({
     [],
   );
   const onTerminalResizeStart = useCallback(
-    (e: ReactMouseEvent) =>
-      startResize(e, terminalWidthPx, 1, isChatOpen ? chatWidthPx : 0, setPreferredTerminalPx),
-    [startResize, terminalWidthPx, chatWidthPx, isChatOpen],
-  );
-  const onChatResizeStart = useCallback(
-    (e: ReactMouseEvent) =>
-      startResize(e, chatWidthPx, -1, isOpen ? terminalWidthPx : 0, setPreferredChatPx),
-    [startResize, chatWidthPx, terminalWidthPx, isOpen],
+    (e: ReactMouseEvent) => startResize(e, terminalWidthPx, 1, 0, setPreferredTerminalPx),
+    [startResize, terminalWidthPx],
   );
 
   // A terminal tab shows the agent's character (front-facing mug shot), so it
@@ -254,15 +229,11 @@ export function useTerminalDrawer({
     shownAgentId,
     lastOpened,
     isOpen,
-    isChatOpen,
     terminalWidthPx,
-    chatWidthPx,
     reveal,
     select,
     close,
-    closeChat,
     onTerminalResizeStart,
-    onChatResizeStart,
     getAppearance,
     statusFor,
     onStatusChange,

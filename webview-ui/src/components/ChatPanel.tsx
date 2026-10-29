@@ -1,11 +1,7 @@
-import type { MouseEvent as ReactMouseEvent, RefObject } from 'react';
+import type { RefObject } from 'react';
 import { useEffect, useRef, useState } from 'react';
 
-import {
-  CHAT_COLUMN_MIN_WIDTH_PX,
-  CHAT_HEADER_REFRESH_MS,
-  TERMINAL_DRAWER_RESIZE_HANDLE_PX,
-} from '../constants.js';
+import { CHAT_COLUMN_MIN_WIDTH_PX, CHAT_HEADER_REFRESH_MS } from '../constants.js';
 import type { TabStatus } from './AgentCard.js';
 import { STATUS_DOT } from './cardBar.js';
 import { ChatPane } from './ChatPane.js';
@@ -29,10 +25,8 @@ interface ChatPanelProps {
   onTakeOver: (agentId: number) => void;
   /** The agent picked last — its chat is open and takes the keyboard. */
   shownAgentId: number | null;
+  /** Shown — the side panel is open on its Chat view. */
   isOpen: boolean;
-  widthPx: number;
-  onResizeStart: (e: ReactMouseEvent) => void;
-  onClose: () => void;
   onSelectAgent: (agentId: number) => void;
   infoFor: (agentId: number) => ChatAgentInfo;
   statusFor: (agentId: number) => TabStatus | null;
@@ -44,7 +38,7 @@ const formatTokens = (n: number) =>
   n >= 1_000_000 ? `${n / 1_000_000}M` : `${Math.round(n / 1000)}k`;
 
 /**
- * Right of the office: the agents' conversations as chat, several open at
+ * The side panel's Chat view: the agents' conversations, several open at
  * once — one column each (name, directory, context gauge, then the bubbles and
  * the reply box of ChatPane), side by side while the panel is wide enough,
  * stacked when it is not. Every Claude started here opens its chat; a tab
@@ -57,9 +51,6 @@ export function ChatPanel({
   onTakeOver,
   shownAgentId,
   isOpen,
-  widthPx,
-  onResizeStart,
-  onClose,
   onSelectAgent,
   infoFor,
   statusFor,
@@ -106,20 +97,9 @@ export function ChatPanel({
   };
 
   return (
-    // display:none (not unmount) while closed, so each agent's half-typed
+    // display:none (not unmount) while hidden, so each agent's half-typed
     // draft survives.
-    <div
-      className={`relative h-full shrink-0 flex-col bg-bg border-l-2 border-border ${isOpen ? 'flex' : 'hidden'}`}
-      style={{ width: widthPx }}
-    >
-      {/* Drag handle over the inner (left) edge. */}
-      <div
-        className="absolute top-0 bottom-0 left-0 z-40 cursor-col-resize hover:bg-accent"
-        style={{ width: TERMINAL_DRAWER_RESIZE_HANDLE_PX }}
-        onMouseDown={onResizeStart}
-        title="Drag to resize"
-      />
-
+    <div className={`flex-1 min-h-0 flex-col ${isOpen ? 'flex' : 'hidden'}`}>
       {/* One tab per agent: status dot + name. An open chat's tab is lit. */}
       <div className="flex items-center gap-2 px-8 pt-6 shrink-0 border-b-2 border-border">
         <div className="flex-1 min-w-0 flex items-center gap-2 overflow-x-auto">
@@ -143,15 +123,6 @@ export function ChatPanel({
             );
           })}
         </div>
-        <Button
-          variant="ghost"
-          size="icon"
-          onClick={onClose}
-          className="shrink-0 hover:bg-btn-hover"
-          title="Close chat"
-        >
-          {'>'}
-        </Button>
       </div>
 
       {/* The open chats: columns while they fit, rows sharing the height

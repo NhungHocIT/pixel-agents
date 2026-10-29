@@ -547,15 +547,15 @@ export const WS_RECONNECT_DELAYS_MS = [250, 500, 1_000, 2_000, 4_000] as const;
 // This file is the one place inline colors are allowed (see eslint.config.js),
 // which is why xterm's theme lives here rather than next to the component.
 
-// Two panels flank the office as flex siblings, in flow (not overlaid): the
-// office's plain terminal on the left, the agents' chats on the right.
-/** Width each panel starts at, as a fraction of the window; the user can drag
+// One panel sits left of the office as a flex sibling, in flow (not
+// overlaid): the agents' chats and the office's plain terminal, one view at a
+// time.
+/** Width the panel starts at, as a fraction of the window; the user can drag
  *  its inner edge to resize. */
-export const TERMINAL_PANEL_DEFAULT_WIDTH_RATIO = 0.27;
-export const CHAT_PANEL_DEFAULT_WIDTH_RATIO = 0.33;
-/** Clamp for the drag: neither panel narrower than this. */
+export const TERMINAL_PANEL_DEFAULT_WIDTH_RATIO = 0.36;
+/** Clamp for the drag: the panel never narrower than this. */
 export const SIDE_PANEL_MIN_WIDTH_PX = 240;
-/** The office always keeps at least this much width between the panels. */
+/** The office always keeps at least this much width beside the panel. */
 export const TERMINAL_OFFICE_MIN_WIDTH_PX = 320;
 /** Narrowest a chat column gets before the open chats stack instead of
  *  sitting side by side. */
