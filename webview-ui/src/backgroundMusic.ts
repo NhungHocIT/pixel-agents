@@ -1,6 +1,7 @@
 /**
  * Background music for what's going on in the office: a hidden YouTube player
- * (the official IFrame API) plays the scene's tracks on loop — League music
+ * (the official IFrame API) plays the scene's tracks one by one, on loop,
+ * skipping any YouTube won't play here — League music
  * while TNhunn plays LoL — and pauses when nothing is on. Each scene picks up where it left off. Respects the sound
  * setting. Nothing loads until music is first wanted.
  */
@@ -11,21 +12,22 @@ import { isE2E } from './runtime.js';
 
 /** The slice of the IFrame API player used here. */
 interface YtPlayer {
-  loadPlaylist(playlist: string[], index?: number, startSeconds?: number): void;
-  setLoop(loop: boolean): void;
+  loadVideoById(videoId: string, startSeconds?: number): void;
   playVideo(): void;
   pauseVideo(): void;
   setVolume(volume: number): void;
   getCurrentTime(): number;
-  getPlaylistIndex(): number;
-  nextVideo(): void;
 }
 
 interface YtNamespace {
   Player: new (
     el: HTMLElement,
     opts: {
-      events: { onReady: () => void; onError: () => void };
+      events: {
+        onReady: () => void;
+        onError: () => void;
+        onStateChange: (e: { data: number }) => void;
+      };
     },
   ) => YtPlayer;
 }
@@ -37,6 +39,10 @@ declare global {
   }
 }
 
+/** IFrame API player states. */
+const YT_ENDED = 0;
+const YT_PLAYING = 1;
+
 let player: YtPlayer | null = null;
 let ready = false;
 let loading = false;
@@ -45,6 +51,10 @@ let wanted: MusicScene | null = null;
 /** The scene loaded in the player, and whether it is playing. */
 let loaded: MusicScene | null = null;
 let playing = false;
+/** The loaded scene's track (index into MUSIC_TRACKS), and how many tracks in
+ *  a row failed (all of them: give up rather than spin). */
+let track = 0;
+let failsInARow = 0;
 /** Where each scene was left: track and second. */
 const leftAt = new Map<MusicScene, { index: number; time: number }>();
 
@@ -84,18 +94,26 @@ function apply(): void {
     return;
   }
   if (scene !== loaded) {
-    if (loaded) {
-      leftAt.set(loaded, { index: player.getPlaylistIndex(), time: player.getCurrentTime() });
-    }
+    if (loaded) leftAt.set(loaded, { index: track, time: player.getCurrentTime() });
     const from = leftAt.get(scene) ?? { index: 0, time: 0 };
-    player.loadPlaylist([...MUSIC_TRACKS[scene]], Math.max(0, from.index), from.time);
-    player.setLoop(true); // round the playlist (a single track repeats)
     loaded = scene;
+    failsInARow = 0;
+    playTrack(from.index, from.time);
     playing = true;
     return;
   }
   if (!playing) player.playVideo();
   playing = true;
+}
+
+/** Load track `index` of the loaded scene (wrapping round) and play it. One
+ *  video at a time: a playlist whose first track won't embed sits silent with
+ *  no error, while a single video reports it at once. */
+function playTrack(index: number, startSeconds = 0): void {
+  if (!player || !loaded) return;
+  const tracks = MUSIC_TRACKS[loaded];
+  track = ((index % tracks.length) + tracks.length) % tracks.length;
+  player.loadVideoById(tracks[track], startSeconds);
 }
 
 function createPlayer(yt: YtNamespace): void {
@@ -123,7 +141,14 @@ function createPlayer(yt: YtNamespace): void {
       },
       // A track that can't play here (embedding off, removed): on to the next
       onError: () => {
-        if (playing) player!.nextVideo();
+        if (!playing || !loaded) return;
+        if (++failsInARow >= MUSIC_TRACKS[loaded].length) return;
+        playTrack(track + 1);
+      },
+      onStateChange: (e) => {
+        if (e.data === YT_PLAYING) failsInARow = 0;
+        // Track over: the next one (round the list)
+        if (e.data === YT_ENDED && playing) playTrack(track + 1);
       },
     },
   });
