@@ -184,12 +184,12 @@ export const PICKLEBALL_CHAT_SEC = 4;
 export const PICKLEBALL_BALL_COLOR = '#DDF23A';
 export const PICKLEBALL_BALL_RIM_COLOR = '#9DB020';
 export const PICKLEBALL_SHADOW_COLOR = '#00000055';
-/** Background music, by what's going on (YouTube video ids, played in order on
- *  loop): League while TNhunn plays LoL. */
+/** Background music, by what's going on (YouTube playlist ids, played in order
+ *  on loop): League while TNhunn plays LoL. */
 export type MusicScene = 'lol';
-export const MUSIC_TRACKS: Record<MusicScene, readonly string[]> = {
-  // Legends Never Die (r6zIGXun57U) is left out: YouTube won't embed it
-  lol: ['C3GouGa0noM', 'UOxkGD8qRB4', 'fB8TyLTD7EE'],
+export const MUSIC_PLAYLISTS: Record<MusicScene, string> = {
+  // Riot's "ICONIC LEAGUE OF LEGENDS": cinematics, Worlds anthems, Arcane
+  lol: 'PLbAFXJC0J5Gbogs-3Jk3nay0sAeAqi3SS',
 };
 /** Background music volume (0-100). */
 export const BACKGROUND_MUSIC_VOLUME = 40;
