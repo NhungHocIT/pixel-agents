@@ -92,6 +92,14 @@ import type { BarChat, ChatInvite } from './barChat.js';
 import { scriptSec, startChat, updateChats } from './barChat.js';
 import { createPatron, isPatron, sendPatronToRest, tickPatronSchedule } from './barPatrons.js';
 import { characterNameOf, storyAnchorName, storySyncName, storyTiesOf } from './barStory.js';
+import type { Celebration } from './celebration.js';
+import {
+  applyCheers,
+  celebrationOver,
+  endCheers,
+  startCelebration,
+  updateCelebration,
+} from './celebration.js';
 import { characterDrawOffsetPx, createCharacter, updateCharacter } from './characters.js';
 import type { ChatPlace, InviteTo } from './dialogues.js';
 import {
@@ -420,9 +428,44 @@ export class OfficeState {
   private lolStatus: LolStatus = { phase: null };
   private lolStatusAt = 0;
 
+  /** TNhunn's win party in progress (null: none), and the last match celebrated. */
+  private celebration: Celebration | null = null;
+  private celebratedGameId: number | null = null;
+
   setLolStatus(status: LolStatus): void {
+    // A win: celebrate once per match (by game id; without one, on the change to a win)
+    const wasWin = this.lolStatus.result === 'win';
+    if (status.result === 'win') {
+      const id = status.gameId ?? null;
+      if (id !== null ? id !== this.celebratedGameId : !wasWin) {
+        if (id !== null) this.celebratedGameId = id;
+        this.celebrate();
+      }
+    }
     this.lolStatus = status;
     this.lolStatusAt = Date.now();
+  }
+
+  /** Fireworks, the banner, and everyone cheering along with TNhunn. */
+  celebrate(): void {
+    this.celebration = startCelebration();
+  }
+
+  /** For the canvas: the celebration to draw over the frame (null: none). */
+  getCelebration(): Celebration | null {
+    return this.celebration;
+  }
+
+  private tickCelebration(dt: number): void {
+    const c = this.celebration;
+    if (!c) return;
+    updateCelebration(c, dt);
+    if (celebrationOver(c)) {
+      endCheers(c, [...this.characters.values(), ...this.patrons]);
+      this.celebration = null;
+      return;
+    }
+    applyCheers(c, this.getDrawnCharacters(), (ch) => this.isUserAvatar(ch), dt);
   }
 
   private userInLeague(): boolean {
@@ -2405,6 +2448,7 @@ export class OfficeState {
     this.updateChat(dt);
     this.holdCustomer();
     this.tickPickleball(dt);
+    this.tickCelebration(dt); // last, so the cheers win over other chatter
 
     // ── Pet FSM ────────────────────────────────────────────────
     for (const pet of this.pets) {

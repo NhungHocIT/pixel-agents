@@ -17,6 +17,10 @@ export interface LolStatus {
   /** In game: kills/deaths/assists. */
   kda?: string;
   gameSec?: number;
+  /** Once the match is over: whether the user's team won. */
+  result?: 'win' | 'lose';
+  /** The match (LCU game id), so one win is celebrated once. */
+  gameId?: number;
 }
 
 /** m:ss, or h:mm:ss past the hour. */

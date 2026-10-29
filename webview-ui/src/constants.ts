@@ -91,6 +91,27 @@ export const STORY_HEART_COOLDOWN_MAX_SEC = 16;
 /** The user's own avatar: plays at a gaming PC whenever the user is in League of Legends
  *  (server `lolStatus`), and leaves the gaming PCs to others otherwise. */
 export const USER_AVATAR_NAME = 'TNhunn';
+/** TNhunn wins a League match: fireworks, a banner, and everyone hopping and
+ *  cheering for this long. Rockets stop going up a little before the end so
+ *  the sky clears. */
+export const CELEBRATION_SEC = 12;
+export const CELEBRATION_STOP_LAUNCH_SEC = 10;
+export const CELEBRATION_BANNER_TEXT = 'Đội bạn quá gà';
+/** Seconds between new cheer lines, per hop beat, and how high a hop goes (sprite px). */
+export const CELEBRATION_LINE_SEC = 3;
+export const CELEBRATION_BEAT_SEC = 0.25;
+export const CELEBRATION_HOP_PX = 4;
+export const CELEBRATION_BANNER_FILL = '#FFD84A';
+export const CELEBRATION_BANNER_OUTLINE = '#2A1240';
+export const CELEBRATION_FIREWORK_COLORS: readonly string[] = [
+  '#FFD84A',
+  '#FF5A5A',
+  '#5AD8FF',
+  '#7CFF6B',
+  '#FF8AF0',
+  '#FFFFFF',
+  '#FFA53D',
+];
 /** The avatar owns the agents (friends, not staff) and lives like everyone
  *  else — drinks, naps, the sofa. Wandering, it drops by the agents, hanging
  *  around one agent's desk this long before the next. */

@@ -1,4 +1,6 @@
 import {
+  CELEBRATION_BEAT_SEC,
+  CELEBRATION_HOP_PX,
   CHARACTER_SITTING_OFFSET_PX,
   CHARACTER_SLEEPING_OFFSET_PX,
   DEFAULT_MAX_CONTEXT_TOKENS,
@@ -439,8 +441,17 @@ function settleIntoRest(ch: Character): void {
   ch.frameTimer = 0;
 }
 
-/** Vertical draw offset (sprite px) for the character's pose: seated, in bed, or standing. */
+/** Vertical draw offset (sprite px) for the character's pose: seated, in bed,
+ *  or standing — lifted on the up beat while cheering TNhunn's win. */
 export function characterDrawOffsetPx(ch: Character): number {
+  const pose = poseOffsetPx(ch);
+  if (ch.cheerTimer === undefined) return pose;
+  return Math.floor(ch.cheerTimer / CELEBRATION_BEAT_SEC) % 2 === 0
+    ? pose - CELEBRATION_HOP_PX
+    : pose;
+}
+
+function poseOffsetPx(ch: Character): number {
   if (ch.state === CharacterState.TYPE || ch.state === CharacterState.GAME) {
     return CHARACTER_SITTING_OFFSET_PX;
   }

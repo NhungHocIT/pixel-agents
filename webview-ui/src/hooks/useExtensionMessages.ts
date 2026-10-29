@@ -308,6 +308,8 @@ export function useExtensionMessages(
           lobbyMax: msg.lobbyMax as number | undefined,
           queueSec: msg.queueSec as number | undefined,
           gameSec: msg.gameSec as number | undefined,
+          result: msg.result as 'win' | 'lose' | undefined,
+          gameId: msg.gameId as number | undefined,
         });
         return;
       }

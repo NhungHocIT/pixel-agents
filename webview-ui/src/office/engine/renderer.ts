@@ -17,6 +17,10 @@ import {
   BUTTON_RADIUS_ZOOM_FACTOR,
   CARPET_DEFAULT_ACCENT_COLOR,
   CARPET_DEFAULT_COLOR,
+  CELEBRATION_BANNER_FILL,
+  CELEBRATION_BANNER_OUTLINE,
+  CELEBRATION_BANNER_TEXT,
+  CELEBRATION_SEC,
   CHARACTER_Z_SORT_OFFSET,
   DELETE_BUTTON_BG,
   FALLBACK_FLOOR_COLOR,
@@ -68,6 +72,7 @@ import type {
 } from '../types.js';
 import { TILE_SIZE, TileType } from '../types.js';
 import { getWallInstances, hasWallSprites, wallColorToHex } from '../wallTiles.js';
+import type { Celebration } from './celebration.js';
 import { characterDrawOffsetPx, getCharacterSprite } from './characters.js';
 import { renderMatrixEffect } from './matrixEffect.js';
 import { getPetSpriteData } from './petEntity.js';
@@ -1017,4 +1022,43 @@ export function renderFrame(
   }
 
   return { offsetX, offsetY };
+}
+
+/** Fireworks and the banner, over the finished frame (device px). */
+export function renderCelebration(
+  ctx: CanvasRenderingContext2D,
+  c: Celebration,
+  w: number,
+  h: number,
+): void {
+  ctx.save();
+  const px = Math.max(2, Math.round(h / 260));
+  for (const r of c.rockets) {
+    ctx.fillStyle = r.color;
+    ctx.fillRect(Math.round(r.x * w), Math.round(r.y * h), px, px * 3);
+  }
+  for (const s of c.sparks) {
+    ctx.globalAlpha = Math.min(1, (s.life / s.maxLife) * 1.5);
+    ctx.fillStyle = s.color;
+    ctx.fillRect(Math.round(s.ox * w + s.dx * h), Math.round(s.oy * h + s.dy * h), px, px);
+  }
+
+  // The banner pops in, pulses, and fades out over the last second
+  const fadeIn = Math.min(1, c.timer / 0.3);
+  const fadeOut = Math.min(1, (CELEBRATION_SEC - c.timer) / 1);
+  ctx.globalAlpha = Math.max(0, Math.min(fadeIn, fadeOut));
+  const pop = fadeIn < 1 ? 0.6 + 0.4 * fadeIn : 1 + 0.05 * Math.sin(c.timer * 6);
+  const size = Math.round(Math.min(w / 9, h / 7) * pop);
+  ctx.font = `bold ${size}px 'FS Pixel Sans', sans-serif`;
+  ctx.textAlign = 'center';
+  ctx.textBaseline = 'middle';
+  ctx.lineJoin = 'round';
+  ctx.lineWidth = Math.max(4, size / 7);
+  ctx.strokeStyle = CELEBRATION_BANNER_OUTLINE;
+  const x = w / 2;
+  const y = h * 0.2;
+  ctx.strokeText(CELEBRATION_BANNER_TEXT, x, y);
+  ctx.fillStyle = CELEBRATION_BANNER_FILL;
+  ctx.fillText(CELEBRATION_BANNER_TEXT, x, y);
+  ctx.restore();
 }

@@ -239,6 +239,9 @@ export interface Character {
   chatCooldown?: number;
   /** Bar patrons only (never agents): seconds left in the current drink / rest spell. */
   patronTimer?: number;
+  /** TNhunn's win celebration: seconds into the cheering (drives the hops);
+   *  undefined when not cheering. Kept up by OfficeState. */
+  cheerTimer?: number;
   /** Exercise break: seconds into the workout (drives which move is shown). */
   exerciseTimer?: number;
   /** Exercise break: which way to face in line (the coach faces the others). */

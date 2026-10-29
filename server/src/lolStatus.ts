@@ -3,7 +3,7 @@
  *
  * Polls the local League Client API (LCU, credentials from the client's
  * `lockfile`) for the gameflow phase, plus the in-game Live Client Data API
- * for the match clock, and broadcasts `{ type: 'lolStatus', ... }` to every
+ * for the match clock and the result, and broadcasts `{ type: 'lolStatus', ... }` to every
  * webview. `phase: null` means League is not running.
  */
 import * as fs from 'fs';
@@ -53,6 +53,10 @@ export interface LolStatus {
   kda?: string;
   /** In game: match clock in seconds. */
   gameSec?: number;
+  /** Once the match is over: whether the user's team won. */
+  result?: 'win' | 'lose';
+  /** The match (LCU game id), so one result is celebrated once. */
+  gameId?: number;
 }
 
 interface Lockfile {
@@ -123,6 +127,38 @@ function getJson(port: number, urlPath: string, password?: string): Promise<unkn
   });
 }
 
+/** The Victory / Defeat screen of the running match (Live Client Data API
+ *  `GameEnd` event), or undefined while it is still being played. */
+async function liveResult(): Promise<LolStatus['result']> {
+  const data = (await getJson(LIVE_CLIENT_PORT, '/liveclientdata/eventdata')) as {
+    Events?: Array<{ EventName?: string; Result?: string }>;
+  } | null;
+  return gameEndResult(data?.Events);
+}
+
+/** `GameEnd` carries `Result: "Win"` or `"Lose"`. */
+export function gameEndResult(
+  events: Array<{ EventName?: string; Result?: string }> | undefined,
+): LolStatus['result'] {
+  const end = events?.find((e) => e.EventName === 'GameEnd');
+  if (end?.Result === 'Win') return 'win';
+  if (end?.Result === 'Lose') return 'lose';
+  return undefined;
+}
+
+/** After the match: the client's end-of-game screen says which team won. */
+export function eogResult(block: unknown): LolStatus['result'] {
+  const b = block as {
+    teams?: Array<{ isPlayerTeam?: boolean; isWinningTeam?: boolean }>;
+    localPlayer?: { stats?: { WIN?: number; LOSE?: number } };
+  } | null;
+  const mine = b?.teams?.find((t) => t.isPlayerTeam);
+  if (typeof mine?.isWinningTeam === 'boolean') return mine.isWinningTeam ? 'win' : 'lose';
+  if (b?.localPlayer?.stats?.WIN) return 'win';
+  if (b?.localPlayer?.stats?.LOSE) return 'lose';
+  return undefined;
+}
+
 async function liveGameSec(): Promise<number | undefined> {
   const stats = (await getJson(LIVE_CLIENT_PORT, '/liveclientdata/gamestats')) as {
     gameTime?: number;
@@ -167,12 +203,17 @@ async function championName(lock: Lockfile, id: number): Promise<string | undefi
   return championNames.names.get(id);
 }
 
-async function queueName(lock: Lockfile): Promise<string | undefined> {
+/** The queue's short name and the match's game id (0 / absent before a match). */
+async function gameInfo(lock: Lockfile): Promise<{ queue?: string; gameId?: number }> {
   const session = (await getJson(lock.port, '/lol-gameflow/v1/session', lock.password)) as {
-    gameData?: { queue?: { id?: number; shortName?: string } };
+    gameData?: { gameId?: number; queue?: { id?: number; shortName?: string } };
   } | null;
   const queue = session?.gameData?.queue;
-  return (queue?.id !== undefined ? QUEUE_NAMES[queue.id] : undefined) ?? queue?.shortName;
+  const gameId = session?.gameData?.gameId;
+  return {
+    queue: (queue?.id !== undefined ? QUEUE_NAMES[queue.id] : undefined) ?? queue?.shortName,
+    gameId: gameId ? gameId : undefined,
+  };
 }
 
 export async function readLolStatus(): Promise<LolStatus> {
@@ -180,16 +221,18 @@ export async function readLolStatus(): Promise<LolStatus> {
   if (!lock) {
     // Client closed but a match still running (e.g. client crashed mid-game)
     const gameSec = await liveGameSec();
-    return gameSec === undefined
-      ? { phase: null }
-      : { phase: 'InProgress', gameSec, ...(await liveChampion()) };
+    if (gameSec === undefined) return { phase: null };
+    const result = await liveResult();
+    return { phase: 'InProgress', gameSec, ...(await liveChampion()), ...(result && { result }) };
   }
   const phase = await getJson(lock.port, '/lol-gameflow/v1/gameflow-phase', lock.password);
   // A stale lockfile (client gone) answers nothing: League is closed
   if (typeof phase !== 'string') return { phase: null };
   const status: LolStatus = { phase };
   if (phase === 'None') return status;
-  status.queue = await queueName(lock);
+  const info = await gameInfo(lock);
+  status.queue = info.queue;
+  if (info.gameId) status.gameId = info.gameId;
   if (phase === 'Lobby') {
     const lobby = (await getJson(lock.port, '/lol-lobby/v2/lobby', lock.password)) as {
       members?: unknown[];
@@ -210,6 +253,12 @@ export async function readLolStatus(): Promise<LolStatus> {
   } else if (phase === 'InProgress' || phase === 'Reconnect') {
     status.gameSec = await liveGameSec();
     Object.assign(status, await liveChampion());
+    const result = await liveResult();
+    if (result) status.result = result;
+  } else if (phase === 'PreEndOfGame' || phase === 'EndOfGame') {
+    const block = await getJson(lock.port, '/lol-end-of-game/v1/eog-stats-block', lock.password);
+    const result = eogResult(block);
+    if (result) status.result = result;
   }
   return status;
 }

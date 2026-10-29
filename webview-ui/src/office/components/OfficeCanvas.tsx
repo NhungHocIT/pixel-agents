@@ -25,7 +25,7 @@ import type {
   RotateButtonBounds,
   SelectionRenderState,
 } from '../engine/renderer.js';
-import { renderFrame } from '../engine/renderer.js';
+import { renderCelebration, renderFrame } from '../engine/renderer.js';
 import { EditTool, TILE_SIZE } from '../types.js';
 import { computeNormalModeCursor } from './officeCanvasCursor.js';
 import { useCanvasTouchGestures } from './useCanvasTouchGestures.js';
@@ -257,6 +257,10 @@ export function OfficeCanvas({
           officeState.pets,
         );
         offsetRef.current = { x: offsetX, y: offsetY };
+
+        // TNhunn won a League match: fireworks and the banner over everything
+        const celebration = officeState.getCelebration();
+        if (celebration) renderCelebration(ctx, celebration, w, h);
 
         // Store delete/rotate button bounds for hit-testing
         deleteButtonBoundsRef.current = editorRender?.deleteButtonBounds ?? null;
