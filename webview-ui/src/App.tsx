@@ -360,12 +360,12 @@ function App() {
     [setTerminalView, selectDrawerAgent],
   );
 
-  // Entering an agent opens its cmd: the shell starts (or the running one is
-  // reused) and shows in the drawer — unless the user switched that agent to
-  // its Claude terminal, which then stays their pick.
+  // Entering an agent shows its Chat (or the Claude terminal, if that is the
+  // user's pick). Only an agent switched to cmd — or with no Claude PTY —
+  // opens its shell: it starts, or the running one is reused.
   const openAgentTerminal = useCallback(
     (id: number) => {
-      if (terminalViews[id] === 'claude' && terminalAgentIds.includes(id)) {
+      if (terminalViews[id] !== 'shell' && terminalAgentIds.includes(id)) {
         selectDrawerAgent(id);
       } else {
         handleOpenShell(id);
@@ -806,7 +806,7 @@ function App() {
             <TerminalDrawer
               claudeAgentIds={terminalAgentIds}
               shellAgentIds={shellAgentIds}
-              viewFor={(id) => terminalViews[id] ?? 'claude'}
+              viewFor={(id) => terminalViews[id] ?? 'chat'}
               onSelectView={setTerminalView}
               onOpenShell={handleOpenShell}
               shownAgentId={terminalDrawer.shownAgentId}

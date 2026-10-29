@@ -1,13 +1,17 @@
 import type { MouseEvent as ReactMouseEvent } from 'react';
+import { useRef } from 'react';
 
 import { OFFICE_SHELL_ID, shellTerminalId } from '../../../core/src/constants.js';
 import { TERMINAL_DRAWER_RESIZE_HANDLE_PX } from '../constants.js';
 import type { TerminalConnectionStatus } from '../terminal/terminalClient.js';
+import { ChatPane } from './ChatPane.js';
+import type { TerminalInputHandle } from './TerminalPane.js';
 import { TerminalPaneStack } from './TerminalPaneStack.js';
 import { Button } from './ui/Button.js';
 
-/** Which of an agent's terminals its tab shows: Claude, or the shell (cmd) beside it. */
-export type TerminalView = 'claude' | 'shell';
+/** Which of an agent's terminals its tab shows: Claude as chat bubbles, the
+ *  Claude terminal itself, or the shell (cmd) beside it. */
+export type TerminalView = 'chat' | 'claude' | 'shell';
 
 interface TerminalDrawerProps {
   /** Agent ids with a live Claude PTY. */
@@ -59,6 +63,7 @@ export function TerminalDrawer({
   onResizeStart,
   onStatusChange,
 }: TerminalDrawerProps) {
+  const inputs = useRef(new Map<number, TerminalInputHandle>());
   if (claudeAgentIds.length === 0 && shellAgentIds.length === 0) return null;
 
   const isOfficeShell = shownAgentId === OFFICE_SHELL_ID;
@@ -72,6 +77,7 @@ export function TerminalDrawer({
   let shownPaneId: number | null = null;
   if (shownAgentId !== null) {
     if (view === 'claude') shownPaneId = shownAgentId;
+    else if (view === 'chat') shownPaneId = null;
     else if (hasShell) shownPaneId = shellTerminalId(shownAgentId);
   }
   const paneIds = [...claudeAgentIds, ...shellAgentIds.map(shellTerminalId)];
@@ -125,6 +131,7 @@ export function TerminalDrawer({
         </Button>
         {!isOfficeShell && shownAgentId !== null && (
           <>
+            {tab('Chat', 'chat', hasClaude, 'Claude as chat bubbles')}
             {tab('Claude', 'claude', hasClaude, 'Claude terminal')}
             {tab('cmd', 'shell', true, "cmd in the agent's working directory")}
           </>
@@ -141,7 +148,7 @@ export function TerminalDrawer({
       </div>
 
       <div className="relative flex-1 min-h-0 p-4">
-        {shownPaneId === null && (
+        {shownPaneId === null && view !== 'chat' && (
           <div className="absolute inset-4 flex items-center justify-center text-sm text-text-muted">
             Opening cmd…
           </div>
@@ -154,7 +161,19 @@ export function TerminalDrawer({
             if (claudeAgentIds.includes(id)) onStatusChange(id, status);
           }}
           paneClassName="inset-4"
+          inputsRef={inputs}
         />
+        {/* Mounted per agent like the panes, so a half-typed draft survives a
+            tab switch; only the shown one polls. */}
+        {claudeAgentIds.map((id) => (
+          <div key={id} className={id === shownAgentId && view === 'chat' ? '' : 'hidden'}>
+            <ChatPane
+              agentId={id}
+              isActive={id === shownAgentId && view === 'chat' && isOpen}
+              getInput={(agentId) => inputs.current.get(agentId)}
+            />
+          </div>
+        ))}
       </div>
     </div>
   );

@@ -6,6 +6,7 @@ import Fastify from 'fastify';
 
 import type { AgentRuntime } from './agentRuntime.js';
 import type { AgentStateStore } from './agentStateStore.js';
+import { readChatMessages } from './chatTranscript.js';
 import type {
   AssetCache,
   ReloadAssetsSideEffect,
@@ -114,6 +115,7 @@ export async function createHttpServer(options: HttpServerOptions): Promise<Http
     allowedHostnames,
     ptyManager: options.ptyManager,
   });
+  if (!options.embedded) registerChatRoute(app, options);
 
   // ── Listen ──────────────────────────────────────────────────
 
@@ -163,6 +165,34 @@ function registerHookRoute(app: FastifyInstance, options: HttpServerOptions): vo
       }
 
       reply.send('ok');
+    },
+  );
+}
+
+// ── Chat ───────────────────────────────────────────────────────
+
+/** An agent's transcript as chat bubbles (the standalone Chat tab). Bearer-gated:
+ *  transcripts hold everything the user and Claude said. */
+function registerChatRoute(app: FastifyInstance, options: HttpServerOptions): void {
+  app.get<{ Params: { agentId: string } }>(
+    '/api/chat/:agentId',
+    {
+      preHandler: bearerAuth(options.token),
+      schema: {
+        params: {
+          type: 'object',
+          properties: { agentId: { type: 'string', pattern: '^[0-9]+$' } },
+          required: ['agentId'],
+        },
+      },
+    },
+    async (request, reply) => {
+      const agent = options.store.get(Number(request.params.agentId));
+      if (!agent) {
+        reply.code(404).send('no such agent');
+        return;
+      }
+      reply.send({ messages: agent.jsonlFile ? readChatMessages(agent.jsonlFile) : [] });
     },
   );
 }
