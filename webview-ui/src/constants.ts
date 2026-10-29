@@ -184,12 +184,77 @@ export const PICKLEBALL_CHAT_SEC = 4;
 export const PICKLEBALL_BALL_COLOR = '#DDF23A';
 export const PICKLEBALL_BALL_RIM_COLOR = '#9DB020';
 export const PICKLEBALL_SHADOW_COLOR = '#00000055';
-/** Background music, by what's going on (YouTube playlist ids, played in order
+/** Background music, by what's going on (YouTube video ids, played in order
  *  on loop): League while TNhunn plays LoL. */
 export type MusicScene = 'lol';
-export const MUSIC_PLAYLISTS: Record<MusicScene, string> = {
-  // Riot's "ICONIC LEAGUE OF LEGENDS": cinematics, Worlds anthems, Arcane
-  lol: 'PLbAFXJC0J5Gbogs-3Jk3nay0sAeAqi3SS',
+export const MUSIC_TRACKS: Record<MusicScene, readonly string[]> = {
+  // Riot's "ICONIC LEAGUE OF LEGENDS" playlist (PLbAFXJC0J5Gbogs-3Jk3nay0sAeAqi3SS),
+  // track by track: the embed player won't load it by playlist id. Legends Never
+  // Die (r6zIGXun57U) is left out: YouTube won't embed it
+  lol: [
+    'Mmw-PpWhKFg',
+    'mlFxxNsExJc',
+    'gMkuV5hh7-s',
+    'e3D7Fj1PsWk',
+    '4L6UfKr8qSE',
+    'pzt6SmvGpXk',
+    'DD3GGy2B_lw',
+    'T4l0KBAn6LU',
+    'XbLemOwzdxk',
+    'j-RpvIuazmc',
+    'I76wvt0aEE4',
+    'opy_y0dkwmk',
+    'WPDpgSBEWaI',
+    'E2Rj2gQAyPA',
+    't9mpyRzipww',
+    'n68BF6IlGhk',
+    'rhTZTy1rZhw',
+    '5FrhtahQiRc',
+    'iC0bms_En58',
+    'ZHhqwBwmRkI',
+    'KkWcsskG4Y8',
+    'MDErQ1KTzaI',
+    'zzctrjs4RJ0',
+    'C3GouGa0noM',
+    'rvaV-3qCWX4',
+    'd9sAMgPKDoc',
+    'oNkT_aZWySA',
+    'HYsz1hP0BFo',
+    'eEFVxI9lqjU',
+    'h_IVUFH5vXo',
+    'abEqJxDWPuc',
+    'mDYqT0_9VR4',
+    'pzFnYYXsKtw',
+    'HzJv6sef8HY',
+    '388vet-q9lo',
+    'F5tSoaJ93ac',
+    '1Z6CHioIn3s',
+    'Q_icM7bKaGU',
+    'WW1BpABbzHs',
+    'E_PbH5y70Tc',
+    'xoWxv2yZXLQ',
+    '3VTkBuxU4yk',
+    'TFzkbos0oeo',
+    'KbNL9ZyB49c',
+    'TNhKAJwlj04',
+    'aR-KAldshAE',
+    'sVZpHFXcFJw',
+    'i1IKnWDecwA',
+    'wkihKQ7Exvo',
+    '1e2xApDeRok',
+    'zF5Ddo9JdpY',
+    'UOxkGD8qRB4',
+    'wHRUDL7GKmI',
+    'fB8TyLTD7EE',
+    'vzNcSvKCOyA',
+    '5-mT9D4fdgQ',
+    'oorajmbSJUM',
+    'Zasx9hjo4WY',
+    '8Dlyp6wkM6c',
+    '0AvWV6Mk374',
+    'fmI_Ndrxy14',
+    '0nlJuwO0GDs',
+  ],
 };
 /** Background music volume (0-100). */
 export const BACKGROUND_MUSIC_VOLUME = 40;

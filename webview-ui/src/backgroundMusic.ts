@@ -5,18 +5,13 @@
  * setting. Nothing loads until music is first wanted.
  */
 import type { MusicScene } from './constants.js';
-import { BACKGROUND_MUSIC_VOLUME, MUSIC_PLAYLISTS } from './constants.js';
+import { BACKGROUND_MUSIC_VOLUME, MUSIC_TRACKS } from './constants.js';
 import { isSoundEnabled } from './notificationSound.js';
 import { isE2E } from './runtime.js';
 
 /** The slice of the IFrame API player used here. */
 interface YtPlayer {
-  loadPlaylist(playlist: {
-    list: string;
-    listType: 'playlist';
-    index?: number;
-    startSeconds?: number;
-  }): void;
+  loadPlaylist(playlist: string[], index?: number, startSeconds?: number): void;
   setLoop(loop: boolean): void;
   playVideo(): void;
   pauseVideo(): void;
@@ -93,12 +88,7 @@ function apply(): void {
       leftAt.set(loaded, { index: player.getPlaylistIndex(), time: player.getCurrentTime() });
     }
     const from = leftAt.get(scene) ?? { index: 0, time: 0 };
-    player.loadPlaylist({
-      list: MUSIC_PLAYLISTS[scene],
-      listType: 'playlist',
-      index: Math.max(0, from.index),
-      startSeconds: from.time,
-    });
+    player.loadPlaylist([...MUSIC_TRACKS[scene]], Math.max(0, from.index), from.time);
     player.setLoop(true); // round the playlist (a single track repeats)
     loaded = scene;
     playing = true;
