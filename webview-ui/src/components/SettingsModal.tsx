@@ -68,7 +68,7 @@ export function SettingsModal({
   onExportLayout,
   onImportLayout,
 }: SettingsModalProps) {
-  const [soundLocal, setSoundLocal] = useState(isSoundEnabled);
+  const [, setSoundLocal] = useState(isSoundEnabled);
   const fileInputRef = useRef<HTMLInputElement>(null);
   const [assetDirDraft, setAssetDirDraft] = useState('');
 
@@ -181,7 +181,9 @@ export function SettingsModal({
       ))}
       <Checkbox
         label="Sound Notifications"
-        checked={soundLocal}
+        // Read live: the header's sound switch can change it while this
+        // stays mounted; the local state only re-renders after a click here.
+        checked={isSoundEnabled()}
         onChange={() => {
           const newVal = !isSoundEnabled();
           setSoundEnabled(newVal);

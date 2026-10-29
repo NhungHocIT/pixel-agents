@@ -1,6 +1,7 @@
-import type { KeyboardEvent as ReactKeyboardEvent } from 'react';
+import type { CSSProperties, KeyboardEvent as ReactKeyboardEvent } from 'react';
 import { useEffect, useRef, useState } from 'react';
 
+import { CHAT_FONT_FAMILY } from '../constants.js';
 import { writeClipboardText } from '../terminal/clipboard.js';
 import { serverToken } from '../transport/serverToken.js';
 import type { TerminalInputHandle } from './TerminalPane.js';
@@ -138,7 +139,12 @@ export function ChatPane({ agentId, isActive, getInput, canSend }: ChatPaneProps
     'w-24 h-24 flex items-center justify-center text-text-muted hover:text-text cursor-pointer bg-transparent border-none';
 
   return (
-    <div className="absolute inset-4 flex flex-col bg-bg-dark">
+    <div
+      className="chat-text absolute inset-4 flex flex-col bg-bg-dark"
+      // Consumed by the `.chat-text` rule in index.css to beat the global
+      // `* { font-pixel }` base rule.
+      style={{ '--font-chat': CHAT_FONT_FAMILY } as CSSProperties}
+    >
       <div ref={listRef} onScroll={onScroll} className="flex-1 min-h-0 overflow-y-auto px-24 py-16">
         {shown.length === 0 && (
           <div className="h-full flex items-center justify-center text-sm text-text-muted">

@@ -587,6 +587,11 @@ export const MUGSHOT_DISPLAY_PX = MUGSHOT_CROP_SIDE_PX * MUGSHOT_RENDER_ZOOM;
 export const TERMINAL_FONT_FAMILY =
   'ui-monospace, SFMono-Regular, Menlo, Consolas, "DejaVu Sans Mono", monospace';
 export const TERMINAL_FONT_SIZE_PX = 20;
+/** Chat CONTENT (bubbles and the reply box) reads as prose, so it uses the
+ *  system UI face — long answers in the pixel font are hard to read. The chat
+ *  panel's chrome (tabs, header) stays on the pixel font. */
+export const CHAT_FONT_FAMILY =
+  '"Segoe UI", system-ui, -apple-system, Roboto, "Helvetica Neue", Arial, sans-serif';
 /** Lines xterm retains client-side (independent of the server's replay ring). */
 export const TERMINAL_SCROLLBACK_LINES = 5_000;
 /** Debounce for propagating a resize to the PTY (fit on every frame thrashes it). */

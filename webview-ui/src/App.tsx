@@ -13,6 +13,7 @@ import { EditActionBar } from './components/EditActionBar.js';
 import { IntroBubble } from './components/IntroBubble.js';
 import { MigrationNotice } from './components/MigrationNotice.js';
 import { MusicVolume } from './components/MusicVolume.js';
+import { OfficeHeader } from './components/OfficeHeader.js';
 import { SettingsModal } from './components/SettingsModal.js';
 import type { TerminalView } from './components/TerminalDrawer.js';
 import { TerminalDrawer } from './components/TerminalDrawer.js';
@@ -795,6 +796,11 @@ function App() {
         isMobile && keyboard.clampHeight !== null ? { height: keyboard.clampHeight } : undefined
       }
     >
+      {/* Desktop standalone: the title bar across the top (VS Code has its
+          own panel title, and mobile has no room for one). */}
+      {isBrowserRuntime && !isMobile && (
+        <OfficeHeader version={extensionVersion} onOpenChangelog={handleOpenChangelog} />
+      )}
       {isMobile ? (
         <MobileShell
           office={officeRegion}
