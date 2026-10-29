@@ -21,6 +21,8 @@ interface ChatPanelProps {
   agentIds: number[];
   /** Agents with a Claude PTY here — the only ones a reply can be sent to. */
   sendableAgentIds: number[];
+  /** Resume an external agent's session in a terminal here. */
+  onTakeOver: (agentId: number) => void;
   /** The agent whose conversation shows (the terminal panel's agent). */
   shownAgentId: number | null;
   isOpen: boolean;
@@ -46,6 +48,7 @@ const formatTokens = (n: number) =>
 export function ChatPanel({
   agentIds,
   sendableAgentIds,
+  onTakeOver,
   shownAgentId,
   isOpen,
   widthPx,
@@ -160,6 +163,7 @@ export function ChatPanel({
               isActive={id === shownAgentId && isOpen}
               getInput={(agentId) => inputsRef.current?.get(agentId)}
               canSend={sendableAgentIds.includes(id)}
+              onTakeOver={() => onTakeOver(id)}
             />
           </div>
         ))}

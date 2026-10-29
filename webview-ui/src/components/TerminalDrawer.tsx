@@ -47,6 +47,8 @@ interface TerminalDrawerProps {
   chatAgentIds: number[];
   /** The agent whose character is selected in the office. */
   focusedAgentId: number | null;
+  /** Resume an external agent's session in a Claude terminal here. */
+  onResumeAgent: (agentId: number) => void;
   /** A chat tab click — the same as a card click. */
   onSelectAgent: (agentId: number) => void;
   infoFor: (agentId: number) => ChatAgentInfo;
@@ -87,6 +89,7 @@ export function TerminalDrawer({
   onCloseChat,
   chatAgentIds,
   focusedAgentId,
+  onResumeAgent,
   onSelectAgent,
   infoFor,
   statusFor,
@@ -213,6 +216,7 @@ export function TerminalDrawer({
       <ChatPanel
         agentIds={chatAgentIds}
         sendableAgentIds={claudeAgentIds}
+        onTakeOver={onResumeAgent}
         shownAgentId={chatAgentId}
         isOpen={isChatOpen}
         widthPx={chatWidthPx}

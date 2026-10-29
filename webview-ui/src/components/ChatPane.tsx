@@ -25,6 +25,9 @@ interface ChatPaneProps {
   /** False for a session with no Claude terminal here (an external one): the
    *  conversation reads, but there is nothing to type a reply into. */
   canSend: boolean;
+  /** Resume the external session in a terminal this app owns, after which
+   *  canSend turns true. */
+  onTakeOver: () => void;
 }
 
 const iconProps = {
@@ -44,8 +47,16 @@ const iconProps = {
  * the transcript (GET /api/chat/:agentId); sending types into the agent's own
  * Claude terminal, so the Chat and Claude tabs are one session.
  */
-export function ChatPane({ agentId, isActive, getInput, canSend }: ChatPaneProps) {
+export function ChatPane({ agentId, isActive, getInput, canSend, onTakeOver }: ChatPaneProps) {
   const [messages, setMessages] = useState<ChatMessage[]>([]);
+  // Between the click and the terminal appearing (canSend turning true).
+  const [takingOver, setTakingOver] = useState(false);
+  useEffect(() => {
+    if (!takingOver) return;
+    // A refused or failed resume never opens a terminal — let it be retried.
+    const timer = window.setTimeout(() => setTakingOver(false), 8000);
+    return () => window.clearTimeout(timer);
+  }, [takingOver]);
   const [hidden, setHidden] = useState<Set<string>>(new Set());
   const [draft, setDraft] = useState('');
   const [copiedId, setCopiedId] = useState<string | null>(null);
@@ -201,6 +212,24 @@ export function ChatPane({ agentId, isActive, getInput, canSend }: ChatPaneProps
       </div>
 
       <div className="shrink-0 px-16 pb-12 pt-4">
+        {!canSend && (
+          <div className="flex items-center gap-12 mb-8 px-14 py-8 rounded-2xl border border-border text-text-muted">
+            <span className="flex-1">
+              Phiên này đang chạy ở terminal khác. Mở nó trong app để chat từ đây, rồi gõ{' '}
+              <code>/exit</code> ở terminal cũ để hai nơi không cùng ghi một phiên.
+            </span>
+            <button
+              onClick={() => {
+                setTakingOver(true);
+                onTakeOver();
+              }}
+              disabled={takingOver}
+              className="shrink-0 px-14 py-6 rounded-full bg-accent text-white cursor-pointer border-none disabled:opacity-40 disabled:cursor-default"
+            >
+              {takingOver ? 'Đang mở…' : 'Mở trong app'}
+            </button>
+          </div>
+        )}
         <div className="flex items-end gap-8 rounded-2xl bg-btn-bg px-14 py-8 border border-border">
           <textarea
             ref={inputRef}
@@ -212,7 +241,7 @@ export function ChatPane({ agentId, isActive, getInput, canSend }: ChatPaneProps
             placeholder={
               canSend
                 ? 'Nhắn cho Claude… (Enter gửi, Shift+Enter xuống dòng)'
-                : 'Phiên chạy ngoài app — chỉ xem được, không gửi từ đây'
+                : 'Mở phiên trong app để gửi tin nhắn'
             }
             className="flex-1 resize-none bg-transparent text-text outline-none border-none placeholder:text-text-muted"
           />

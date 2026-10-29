@@ -843,6 +843,12 @@ function App() {
               onCloseChat={terminalDrawer.closeChat}
               chatAgentIds={agents}
               focusedAgentId={focusedAgentId}
+              onResumeAgent={(id) => {
+                // Its Claude terminal opens on the left once the server
+                // announces it (terminalSessionOpened makes it the shown tab).
+                setTerminalView(id, 'claude');
+                transport.send({ type: 'resumeAgent', id });
+              }}
               onSelectAgent={openAgentTerminal}
               infoFor={chatAgentInfo}
               statusFor={terminalDrawer.statusFor}

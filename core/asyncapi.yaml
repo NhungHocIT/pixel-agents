@@ -138,6 +138,7 @@ components:
         - $ref: '#/components/schemas/FocusAgent'
         - $ref: '#/components/schemas/CloseAgent'
         - $ref: '#/components/schemas/OpenShell'
+        - $ref: '#/components/schemas/ResumeAgent'
         - $ref: '#/components/schemas/SaveAgentSeats'
         - $ref: '#/components/schemas/SaveLayout'
         - $ref: '#/components/schemas/SetSoundEnabled'
@@ -1039,6 +1040,20 @@ components:
       properties:
         type:
           const: openShell
+        id:
+          type: integer
+
+    ResumeAgent:
+      description: >-
+        Take over an adopted (external) agent: resume its session in a Claude terminal
+        this server owns (`claude --resume`), keeping the agent and its character.
+        Standalone only.
+      type: object
+      additionalProperties: false
+      required: [type, id]
+      properties:
+        type:
+          const: resumeAgent
         id:
           type: integer
 

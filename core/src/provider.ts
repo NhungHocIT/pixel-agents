@@ -129,11 +129,12 @@ export interface HookProvider {
   readonly sessionFilePattern?: string;
   /** Parse one line of a transcript file into an AgentEvent. */
   parseTranscriptLine?(line: string): AgentEvent | null;
-  /** Build CLI launch command for +Agent button. */
+  /** Build CLI launch command for +Agent button. `resume` continues an existing
+   *  session (taking over an adopted agent) instead of starting a new one. */
   buildLaunchCommand?(
     sessionId: string,
     cwd: string,
-    opts?: { bypassPermissions?: boolean },
+    opts?: { bypassPermissions?: boolean; resume?: boolean },
   ): {
     command: string;
     args: string[];

@@ -5,12 +5,16 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
 import type { HookProvider } from '../../core/src/provider.js';
 import { AgentRuntime } from '../src/agentRuntime.js';
+import { createAgentState } from '../src/agentState.js';
 import { AgentStateStore } from '../src/agentStateStore.js';
 import { JSONL_POLL_INTERVAL_MS } from '../src/constants.js';
 import { claudeProvider } from '../src/providers/hook/claude/claude.js';
 import type { IPty, PtyModule, PtySpawnOptions } from '../src/terminal/ptyModule.js';
 import { PtySessionManager } from '../src/terminal/ptySessionManager.js';
-import { launchStandaloneAgent } from '../src/terminal/standaloneAgentLauncher.js';
+import {
+  launchStandaloneAgent,
+  resumeExternalAgent,
+} from '../src/terminal/standaloneAgentLauncher.js';
 
 /**
  * launchStandaloneAgent is the standalone counterpart of the VS Code adapter's
@@ -269,5 +273,72 @@ describe('launchStandaloneAgent', () => {
 
     expect(runtime.jsonlPollTimers.has(id)).toBe(false);
     expect(runtime.pollingTimers.has(id)).toBe(false);
+  });
+
+  // ── Taking over an adopted agent ─────────────────────────────
+
+  describe('resumeExternalAgent', () => {
+    const SESSION = '11111111-2222-3333-4444-555555555555';
+
+    function adopt(cwd: string): number {
+      const id = store.nextAgentId.current++;
+      store.set(
+        id,
+        createAgentState({
+          id,
+          sessionId: SESSION,
+          isExternal: true,
+          projectDir,
+          jsonlFile: path.join(projectDir, `${SESSION}.jsonl`),
+          cwd,
+        }),
+      );
+      return id;
+    }
+
+    function resume(harness: PtyHarness, id: number): boolean {
+      return resumeExternalAgent(
+        { store, runtime, ptyManager: harness.manager, provider: provider() },
+        id,
+      );
+    }
+
+    it('resumes the session in a PTY under the same agent and makes it ours', () => {
+      const harness = workingPtyManager();
+      const cwd = path.join(tempDir, 'workspace');
+      fs.mkdirSync(cwd);
+      const id = adopt(cwd);
+
+      expect(resume(harness, id)).toBe(true);
+
+      expect(harness.spawnArgs[0].args).toEqual(['--resume', SESSION]);
+      expect(harness.spawnArgs[0].options.cwd).toBe(cwd);
+      expect(store.get(id)?.isExternal).toBe(false);
+      expect(broadcasts).toContainEqual({ type: 'terminalSessionOpened', agentId: id });
+    });
+
+    it('removes the agent when the resumed terminal exits', () => {
+      const harness = workingPtyManager();
+      const id = adopt(tempDir);
+      resume(harness, id);
+
+      harness.spawned[0].exit(0);
+
+      expect(store.has(id)).toBe(false);
+      expect(broadcasts).toContainEqual({
+        type: 'terminalSessionClosed',
+        agentId: id,
+        exitCode: 0,
+      });
+    });
+
+    it('refuses an agent that is already ours or unknown', () => {
+      const harness = workingPtyManager();
+      const launched = launch(harness)!;
+
+      expect(resume(harness, launched)).toBe(false);
+      expect(resume(harness, 999)).toBe(false);
+      expect(harness.spawnArgs).toHaveLength(1);
+    });
   });
 });
