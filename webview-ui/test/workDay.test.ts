@@ -40,7 +40,8 @@ test('the day: work, lunch at the bar, free after it, the afternoon break', () =
   assert.equal(dayPhaseAt(at(13, 35)), 'work');
   assert.equal(dayPhaseAt(at(15, 30)), 'free');
   assert.equal(dayPhaseAt(at(15, 45)), 'work');
-  assert.equal(dayPhaseAt(at(17, 30)), 'free');
+  assert.equal(dayPhaseAt(at(17, 59)), 'work');
+  assert.equal(dayPhaseAt(at(18, 0)), 'free');
 });
 
 // ── A small office: the bar on the left (FLOOR_1), the game room on the right

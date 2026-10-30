@@ -41,7 +41,7 @@ export const EXERCISE_HOP_PX = 3;
  *  talking it over on the sofa — from WORK_START to WORK_END, except at lunch
  *  and the afternoon break. Outside the day everyone is free as before. */
 export const WORK_START_MIN = 8 * 60;
-export const WORK_END_MIN = 17 * 60 + 30;
+export const WORK_END_MIN = 18 * 60;
 /** Lunch: everyone heads to the bar to eat for LUNCH_MEAL_MIN, then is free
  *  until LUNCH_END. */
 export const LUNCH_START_MIN = 12 * 60 + 2;
