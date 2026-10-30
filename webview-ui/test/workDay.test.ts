@@ -132,6 +132,28 @@ test('at work agents work at the computers and everyone stays in the game room',
   }
 });
 
+test('at work anyone, not only agents, sits down at a free computer', () => {
+  loadCatalog();
+  loadCast();
+  const office = new OfficeState(layout());
+  office.now = () => at(10, 0);
+  office.addAgent(1, undefined, undefined, 'pc-a', true);
+  let patronAtComputer = false;
+  for (let t = 0; t < 600 && !patronAtComputer; t += 0.1) {
+    office.update(0.1);
+    patronAtComputer = office
+      .getVisiblePatrons()
+      .some(
+        (p) =>
+          p.tileCol === 13 &&
+          p.tileRow === 4 &&
+          (p.state === CharacterState.TYPE || p.state === CharacterState.GAME),
+      );
+  }
+  assert.ok(patronAtComputer, 'a patron works at the free computer');
+  assert.equal(office.characters.get(1)!.seatId, 'pc-a', 'the agent keeps its own');
+});
+
 test('at lunch everyone eats at the bar, and is back in the game room after', () => {
   loadCatalog();
   loadCast();

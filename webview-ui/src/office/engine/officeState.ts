@@ -57,6 +57,7 @@ import {
   WAITER_WORK_FRAME_SEC,
   WAITER_WORK_LINE_SEC,
   WAITING_BUBBLE_DURATION_SEC,
+  WORK_COMPUTER_PREFERENCE,
 } from '../../constants.js';
 import { getAnimationFrames, getCatalogEntry, getOnStateType } from '../layout/furnitureCatalog.js';
 import {
@@ -868,21 +869,45 @@ export class OfficeState {
   }
 
   /** A rest spot anyone may take now: no bed during work hours, and not a
-   *  gaming chair an agent works at. */
+   *  computer someone (an agent, or a patron at work) is sitting at. */
   private restSpotAllowed(s: RestSpot): boolean {
     if (s.kind === 'bed' && this.dayPhase === 'work') return false;
+    const sitter = new Set(this.patrons.map((o) => o.seatId));
     return ![...this.seats.values()].some(
-      (seat) => seat.assigned && seat.seatCol === s.col && seat.seatRow === s.row,
+      (seat) =>
+        (seat.assigned || sitter.has(seat.uid)) && seat.seatCol === s.col && seat.seatRow === s.row,
     );
+  }
+
+  /** Computers nobody works at (agent), sits at (patron) or plays at (rest spot). */
+  private freeComputers(p: Character): Seat[] {
+    const sitter = new Set(this.patrons.filter((o) => o !== p).map((o) => o.seatId));
+    const players = [...this.characters.values(), ...this.patrons].filter((o) => o.restSpot);
+    return [...this.workSeatUids]
+      .map((uid) => this.seats.get(uid))
+      .filter(
+        (s): s is Seat =>
+          s !== undefined &&
+          !s.assigned &&
+          !sitter.has(s.uid) &&
+          !players.some((o) => o.restSpot!.col === s.seatCol && o.restSpot!.row === s.seatRow),
+      );
   }
 
   /** A free bar seat for a patron: not an agent's, not another patron's.
    *  Storyline ties pick the free seat nearest the partner / buddy / leader. */
   private pickPatronSeat(p: Character): string | null {
-    // At work, a seat in the game room means the sofa: talking it over
-    const free = this.freePatronSeats([p]).filter(
-      (s) => this.dayPhase !== 'work' || this.isSofaSeat(s.uid),
-    );
+    // At work everyone stays in the game room: a free computer to work at,
+    // or the sofa to talk it over
+    if (this.dayPhase === 'work') {
+      const computers = this.freeComputers(p);
+      const sofa = this.freePatronSeats([p]).filter((s) => this.isSofaSeat(s.uid));
+      if (computers.length > 0 && (sofa.length === 0 || Math.random() < WORK_COMPUTER_PREFERENCE)) {
+        return randomOf(computers).uid;
+      }
+      return sofa.length > 0 ? randomOf(sofa).uid : null;
+    }
+    const free = this.freePatronSeats([p]);
     if (free.length === 0) return null;
     const anchorSeatId = this.storyAnchor(p)?.seatId;
     const anchorSeat = anchorSeatId ? this.seats.get(anchorSeatId) : undefined;
@@ -1427,7 +1452,11 @@ export class OfficeState {
       const seat = this.seats.get(p.seatId);
       if (!seat || seat.assigned) sendPatronToRest(p, PATRON_SEAT_RETRY_SEC);
       // Work time: off the bar seats, back to the game room
-      else if (this.dayPhase === 'work' && !this.isSofaSeat(seat.uid)) {
+      else if (
+        this.dayPhase === 'work' &&
+        !this.isSofaSeat(seat.uid) &&
+        !this.workSeatUids.has(seat.uid)
+      ) {
         sendPatronToRest(p, PATRON_SEAT_RETRY_SEC);
       }
     }
