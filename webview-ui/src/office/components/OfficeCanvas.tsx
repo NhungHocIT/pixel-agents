@@ -168,17 +168,17 @@ export function OfficeCanvas({
 
   // Fill the window with the office: the smallest zoom at which the map covers
   // every pixel (cropping the long side, centered), in 1/16 steps so a tile
-  // stays a whole number of device pixels (no seams). It is also the zoom-out
-  // floor outside the editor. Re-chosen when the window or the office changes
-  // size; a manual zoom in between is kept.
-  const coverZoomRef = useRef<number | null>(null);
+  // stays a whole number of device pixels (no seams). Zooming out goes as far
+  // as the whole office in view (the floor outside the editor). Re-chosen when
+  // the window or the office changes size; a manual zoom in between is kept.
+  const floorZoomRef = useRef<number | null>(null);
   const isEditModeRef = useRef(isEditMode);
   isEditModeRef.current = isEditMode;
   const zoomRef = useRef(zoom);
   zoomRef.current = zoom;
   useEffect(() => {
-    if (coverZoomRef.current === null) return;
-    onMinZoomChange(isEditMode ? ZOOM_FIT_MIN : coverZoomRef.current);
+    if (floorZoomRef.current === null) return;
+    onMinZoomChange(isEditMode ? ZOOM_FIT_MIN : floorZoomRef.current);
   }, [isEditMode, onMinZoomChange]);
   useEffect(() => {
     const container = containerRef.current;
@@ -194,13 +194,14 @@ export function OfficeCanvas({
       if (key === fitted) return;
       fitted = key;
       const dpr = window.devicePixelRatio || 1;
-      const scale = Math.max(
-        (rect.width * dpr) / (b.x1 - b.x0),
-        (rect.height * dpr) / (b.y1 - b.y0),
-      );
-      const stepped = Math.ceil(scale * TILE_SIZE) / TILE_SIZE;
+      const scaleX = (rect.width * dpr) / (b.x1 - b.x0);
+      const scaleY = (rect.height * dpr) / (b.y1 - b.y0);
+      const stepped = Math.ceil(Math.max(scaleX, scaleY) * TILE_SIZE) / TILE_SIZE;
       const cover = Math.max(ZOOM_FIT_MIN, Math.min(ZOOM_MAX, stepped));
-      coverZoomRef.current = cover;
+      // Zoomed all the way out, the whole office shows (bands at the short side)
+      const contain = Math.floor(Math.min(scaleX, scaleY) * TILE_SIZE) / TILE_SIZE;
+      const floor = Math.max(ZOOM_FIT_MIN, Math.min(cover, contain));
+      floorZoomRef.current = floor;
       // Center the content; also queued for the zoom change, so the re-clamp
       // under the new zoom starts from the centered pan
       const centered = {
@@ -210,7 +211,7 @@ export function OfficeCanvas({
       panRef.current = centered;
       if (cover !== zoomRef.current) pendingPanRef.current = centered;
       // Floor first, so the new zoom isn't clamped against the old one
-      onMinZoomChange(isEditModeRef.current ? ZOOM_FIT_MIN : cover);
+      onMinZoomChange(isEditModeRef.current ? ZOOM_FIT_MIN : floor);
       onZoomChange(cover);
     };
     fit();
