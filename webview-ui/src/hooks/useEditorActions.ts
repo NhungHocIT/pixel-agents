@@ -54,6 +54,9 @@ interface EditorActions extends Omit<FurnitureColorActions, 'pickColorAt'> {
   editorTick: number;
   isDirty: boolean;
   zoom: number;
+  /** Lowest zoom allowed right now: the window-filling zoom outside the
+   *  editor, so the office always covers the window. */
+  minZoom: number;
   panRef: React.MutableRefObject<{ x: number; y: number }>;
   saveTimerRef: React.MutableRefObject<ReturnType<typeof setTimeout> | null>;
   setLastSavedLayout: (layout: OfficeLayout) => void;
@@ -74,6 +77,7 @@ interface EditorActions extends Omit<FurnitureColorActions, 'pickColorAt'> {
   handleReset: () => void;
   handleSave: () => void;
   handleZoomChange: (zoom: number) => void;
+  handleMinZoomChange: (minZoom: number) => void;
   handleEditorTileAction: (col: number, row: number) => void;
   handleEditorEraseAction: (col: number, row: number) => void;
   handleEditorSelectionChange: () => void;
@@ -115,6 +119,10 @@ export function useEditorActions(
   const [editorTick, setEditorTick] = useState(0);
   const [isDirty, setIsDirty] = useState(false);
   const [zoom, setZoom] = useState(defaultZoom);
+  const [minZoom, setMinZoom] = useState(ZOOM_MIN);
+  // Read synchronously by handleZoomChange: a fit lowers the floor and sets
+  // the new zoom in the same tick, before the state above re-renders.
+  const minZoomRef = useRef(ZOOM_MIN);
   const [carpetVariant, setCarpetVariantState] = useState<number>(editorState.carpetVariant);
   const [carpetColor, setCarpetColorState] = useState<ColorValue>(editorState.carpetColor);
   const [carpetAccentColor, setCarpetAccentColorState] = useState<ColorValue>(
@@ -510,7 +518,13 @@ export function useEditorActions(
   const handleEditorSelectionChange = bumpTick;
 
   const handleZoomChange = useCallback((newZoom: number) => {
-    setZoom(Math.max(ZOOM_MIN, Math.min(ZOOM_MAX, newZoom)));
+    setZoom(Math.max(minZoomRef.current, Math.min(ZOOM_MAX, newZoom)));
+  }, []);
+
+  const handleMinZoomChange = useCallback((newMin: number) => {
+    minZoomRef.current = newMin;
+    setMinZoom(newMin);
+    setZoom((z) => Math.max(newMin, z));
   }, []);
 
   /**
@@ -752,6 +766,7 @@ export function useEditorActions(
     editorTick,
     isDirty,
     zoom,
+    minZoom,
     panRef,
     saveTimerRef,
     setLastSavedLayout,
@@ -774,6 +789,7 @@ export function useEditorActions(
     handleReset,
     handleSave,
     handleZoomChange,
+    handleMinZoomChange,
     handleEditorTileAction,
     handleEditorEraseAction,
     handleEditorSelectionChange,

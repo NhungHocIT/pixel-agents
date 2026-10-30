@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useRef } from 'react';
+import { useCallback, useEffect, useLayoutEffect, useRef } from 'react';
 
 import { setBackgroundMusic } from '../../backgroundMusic.js';
 import {
@@ -9,7 +9,6 @@ import {
   ZOOM_FIT_CHECK_MS,
   ZOOM_FIT_MIN,
   ZOOM_MAX,
-  ZOOM_MIN,
   ZOOM_SCROLL_THRESHOLD,
 } from '../../constants.js';
 import { unlockAudio } from '../../notificationSound.js';
@@ -26,6 +25,7 @@ import type {
   SelectionRenderState,
 } from '../engine/renderer.js';
 import { renderCelebration, renderFrame } from '../engine/renderer.js';
+import { contentBounds } from '../projection.js';
 import { EditTool, TILE_SIZE } from '../types.js';
 import { computeNormalModeCursor } from './officeCanvasCursor.js';
 import { useCanvasTouchGestures } from './useCanvasTouchGestures.js';
@@ -55,7 +55,11 @@ interface OfficeCanvasProps {
   onDrop: (uid: string, col: number, row: number, opts: { duplicate: boolean }) => void;
   editorTick: number;
   zoom: number;
+  /** Lowest zoom the wheel may step to (the window-filling zoom outside the editor). */
+  minZoom: number;
   onZoomChange: (zoom: number) => void;
+  /** Reports the zoom floor: the window-filling zoom, or ZOOM_FIT_MIN in the editor. */
+  onMinZoomChange: (minZoom: number) => void;
   panRef: React.MutableRefObject<{ x: number; y: number }>;
   /** Whether the area overlay + labels should render (settings toggle OR active edit). */
   showAreas: boolean;
@@ -81,7 +85,9 @@ export function OfficeCanvas({
   onDrop,
   editorTick: _editorTick,
   zoom,
+  minZoom,
   onZoomChange,
+  onMinZoomChange,
   panRef,
   showAreas,
   activeAreaLabel,
@@ -100,7 +106,11 @@ export function OfficeCanvas({
   const isEraseDraggingRef = useRef(false);
   // Zoom scroll accumulator for trackpad pinch sensitivity
   const zoomAccumulatorRef = useRef(0);
-  // Clamp pan so the map edge can't go past a margin inside the viewport
+  // Wheel zoom anchored on the cursor: the pan for the new zoom, applied once
+  // that zoom has rendered (clampPan below must see the new map size)
+  const pendingPanRef = useRef<{ x: number; y: number } | null>(null);
+  // Clamp pan so the map always covers the viewport (no empty band at any
+  // edge); the editor keeps a margin past the edge for growing the grid
   const clampPan = useCallback(
     (px: number, py: number): { x: number; y: number } => {
       const canvas = canvasRef.current;
@@ -108,6 +118,21 @@ export function OfficeCanvas({
       const layout = officeState.getLayout();
       const mapW = layout.cols * TILE_SIZE * zoom;
       const mapH = layout.rows * TILE_SIZE * zoom;
+      if (!isEditMode) {
+        // Keep the non-VOID part of the map over every canvas pixel. The
+        // map's left edge sits at floor((W - mapW) / 2) + pan (see mapOffset).
+        const b = contentBounds(layout);
+        const clampAxis = (p: number, view: number, map: number, lo: number, hi: number) => {
+          const base = Math.floor((view - map) / 2);
+          const max = Math.floor(-base - lo * zoom);
+          const min = Math.ceil(view - base - hi * zoom);
+          return min > max ? Math.round((min + max) / 2) : Math.max(min, Math.min(max, p));
+        };
+        return {
+          x: clampAxis(px, canvas.width, mapW, b.x0, b.x1),
+          y: clampAxis(py, canvas.height, mapH, b.y0, b.y1),
+        };
+      }
       const marginX = canvas.width * PAN_MARGIN_FRACTION;
       const marginY = canvas.height * PAN_MARGIN_FRACTION;
       const maxPanX = mapW / 2 + canvas.width / 2 - marginX;
@@ -117,8 +142,15 @@ export function OfficeCanvas({
         y: Math.max(-maxPanY, Math.min(maxPanY, py)),
       };
     },
-    [officeState, zoom],
+    [officeState, zoom, isEditMode],
   );
+
+  // Re-clamp once a new zoom (or mode) is live, landing a wheel zoom's anchor
+  useLayoutEffect(() => {
+    const p = pendingPanRef.current ?? panRef.current;
+    pendingPanRef.current = null;
+    panRef.current = clampPan(p.x, p.y);
+  }, [clampPan, panRef]);
 
   // Resize canvas backing store to device pixels (no DPR transform on ctx)
   const resizeCanvas = useCallback(() => {
@@ -134,10 +166,20 @@ export function OfficeCanvas({
     // No ctx.scale(dpr) — we render directly in device pixels
   }, []);
 
-  // Fit the whole office in the window: the largest zoom that shows every tile,
-  // in 1/16 steps so a tile stays a whole number of device pixels (no seams).
-  // Re-chosen when the window or the office changes size; a manual zoom in
-  // between is kept.
+  // Fill the window with the office: the smallest zoom at which the map covers
+  // every pixel (cropping the long side, centered), in 1/16 steps so a tile
+  // stays a whole number of device pixels (no seams). It is also the zoom-out
+  // floor outside the editor. Re-chosen when the window or the office changes
+  // size; a manual zoom in between is kept.
+  const coverZoomRef = useRef<number | null>(null);
+  const isEditModeRef = useRef(isEditMode);
+  isEditModeRef.current = isEditMode;
+  const zoomRef = useRef(zoom);
+  zoomRef.current = zoom;
+  useEffect(() => {
+    if (coverZoomRef.current === null) return;
+    onMinZoomChange(isEditMode ? ZOOM_FIT_MIN : coverZoomRef.current);
+  }, [isEditMode, onMinZoomChange]);
   useEffect(() => {
     const container = containerRef.current;
     if (!container) return;
@@ -145,18 +187,31 @@ export function OfficeCanvas({
     const fit = () => {
       const rect = container.getBoundingClientRect();
       if (rect.width === 0 || rect.height === 0) return;
-      const { cols, rows } = officeState.getLayout();
-      const key = `${Math.round(rect.width)}x${Math.round(rect.height)}:${cols}x${rows}`;
+      const layout = officeState.getLayout();
+      const { cols, rows } = layout;
+      const b = contentBounds(layout);
+      const key = `${Math.round(rect.width)}x${Math.round(rect.height)}:${cols}x${rows}:${b.x0},${b.y0},${b.x1},${b.y1}`;
       if (key === fitted) return;
       fitted = key;
       const dpr = window.devicePixelRatio || 1;
-      const scale = Math.min(
-        (rect.width * dpr) / (cols * TILE_SIZE),
-        (rect.height * dpr) / (rows * TILE_SIZE),
+      const scale = Math.max(
+        (rect.width * dpr) / (b.x1 - b.x0),
+        (rect.height * dpr) / (b.y1 - b.y0),
       );
-      const stepped = Math.floor(scale * TILE_SIZE) / TILE_SIZE;
-      panRef.current = { x: 0, y: 0 };
-      onZoomChange(Math.max(ZOOM_FIT_MIN, Math.min(ZOOM_MAX, stepped)));
+      const stepped = Math.ceil(scale * TILE_SIZE) / TILE_SIZE;
+      const cover = Math.max(ZOOM_FIT_MIN, Math.min(ZOOM_MAX, stepped));
+      coverZoomRef.current = cover;
+      // Center the content; also queued for the zoom change, so the re-clamp
+      // under the new zoom starts from the centered pan
+      const centered = {
+        x: (cols * TILE_SIZE * cover) / 2 - ((b.x0 + b.x1) / 2) * cover,
+        y: (rows * TILE_SIZE * cover) / 2 - ((b.y0 + b.y1) / 2) * cover,
+      };
+      panRef.current = centered;
+      if (cover !== zoomRef.current) pendingPanRef.current = centered;
+      // Floor first, so the new zoom isn't clamped against the old one
+      onMinZoomChange(isEditModeRef.current ? ZOOM_FIT_MIN : cover);
+      onZoomChange(cover);
     };
     fit();
     const observer = new ResizeObserver(fit);
@@ -167,7 +222,7 @@ export function OfficeCanvas({
       observer.disconnect();
       clearInterval(timer);
     };
-  }, [officeState, onZoomChange, panRef]);
+  }, [officeState, onZoomChange, onMinZoomChange, panRef]);
 
   useEffect(() => {
     const canvas = canvasRef.current;
@@ -223,6 +278,8 @@ export function OfficeCanvas({
             };
           }
         }
+        // Following an agent near the edge must not drag the map off the window
+        panRef.current = clampPan(panRef.current.x, panRef.current.y);
 
         // Build selection render state
         const selectionRender: SelectionRenderState = {
@@ -280,6 +337,7 @@ export function OfficeCanvas({
     _editorTick,
     zoom,
     panRef,
+    clampPan,
     showAreas,
     activeAreaLabel,
   ]);
@@ -793,18 +851,34 @@ export function OfficeCanvas({
     [isEditMode, officeState, screenToTile],
   );
 
-  // Wheel: Ctrl+wheel to zoom, plain wheel/trackpad to pan
+  // Wheel: zoom toward the cursor; Shift+wheel or a sideways trackpad swipe pans
   const handleWheel = useCallback(
     (e: WheelEvent) => {
       e.preventDefault();
-      if (e.ctrlKey || e.metaKey) {
+      if (!e.shiftKey && Math.abs(e.deltaY) >= Math.abs(e.deltaX)) {
         // Accumulate scroll delta, step zoom when threshold crossed
         zoomAccumulatorRef.current += e.deltaY;
         if (Math.abs(zoomAccumulatorRef.current) >= ZOOM_SCROLL_THRESHOLD) {
           const delta = zoomAccumulatorRef.current < 0 ? 1 : -1;
           zoomAccumulatorRef.current = 0;
-          const newZoom = Math.max(ZOOM_MIN, Math.min(ZOOM_MAX, zoom + delta));
-          if (newZoom !== zoom) {
+          const newZoom = Math.max(minZoom, Math.min(ZOOM_MAX, zoom + delta));
+          const canvas = canvasRef.current;
+          if (newZoom !== zoom && canvas) {
+            // Keep the world point under the cursor fixed across the zoom
+            const rect = canvas.getBoundingClientRect();
+            const dpr = window.devicePixelRatio || 1;
+            const cx = (e.clientX - rect.left) * dpr;
+            const cy = (e.clientY - rect.top) * dpr;
+            const worldX = (cx - offsetRef.current.x) / zoom;
+            const worldY = (cy - offsetRef.current.y) / zoom;
+            const layout = officeState.getLayout();
+            const mapW = layout.cols * TILE_SIZE * newZoom;
+            const mapH = layout.rows * TILE_SIZE * newZoom;
+            officeState.breakCameraFollow();
+            pendingPanRef.current = {
+              x: cx - worldX * newZoom - (canvas.width - mapW) / 2,
+              y: cy - worldY * newZoom - (canvas.height - mapH) / 2,
+            };
             onZoomChange(newZoom);
           }
         }
@@ -818,7 +892,7 @@ export function OfficeCanvas({
         );
       }
     },
-    [zoom, onZoomChange, officeState, panRef, clampPan],
+    [zoom, minZoom, onZoomChange, officeState, panRef, clampPan],
   );
 
   // Attach wheel listener with { passive: false } so preventDefault() works.

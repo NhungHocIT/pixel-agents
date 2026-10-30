@@ -14,7 +14,51 @@
  * graph that imports it.
  */
 
-import { TILE_SIZE } from './types.js';
+import type { OfficeLayout } from './types.js';
+import { TILE_SIZE, TileType } from './types.js';
+
+/** World-pixel box around every non-VOID tile — the part of the map worth
+ *  showing. Layouts often carry empty VOID rows/columns at an edge; fitting
+ *  the window to the whole grid would leave those as a black band. */
+export interface ContentBounds {
+  x0: number;
+  y0: number;
+  x1: number;
+  y1: number;
+}
+
+const boundsCache = new WeakMap<OfficeLayout, ContentBounds>();
+
+export function contentBounds(layout: OfficeLayout): ContentBounds {
+  const cached = boundsCache.get(layout);
+  if (cached) return cached;
+  const { cols, rows, tiles } = layout;
+  let c0 = cols;
+  let r0 = rows;
+  let c1 = -1;
+  let r1 = -1;
+  for (let r = 0; r < rows; r++) {
+    for (let c = 0; c < cols; c++) {
+      if (tiles[r * cols + c] === TileType.VOID) continue;
+      if (c < c0) c0 = c;
+      if (c > c1) c1 = c;
+      if (r < r0) r0 = r;
+      if (r > r1) r1 = r;
+    }
+  }
+  // An all-VOID grid falls back to the whole grid
+  const bounds =
+    c1 < 0
+      ? { x0: 0, y0: 0, x1: cols * TILE_SIZE, y1: rows * TILE_SIZE }
+      : {
+          x0: c0 * TILE_SIZE,
+          y0: r0 * TILE_SIZE,
+          x1: (c1 + 1) * TILE_SIZE,
+          y1: (r1 + 1) * TILE_SIZE,
+        };
+  boundsCache.set(layout, bounds);
+  return bounds;
+}
 
 /** Device-pixel offset of the map's top-left corner inside the canvas.
  *  This is the renderer's own frame of reference — overlays go through

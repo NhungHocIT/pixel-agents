@@ -546,7 +546,9 @@ function App() {
         onDrop={editor.handleDrop}
         editorTick={editor.editorTick}
         zoom={editor.zoom}
+        minZoom={editor.minZoom}
         onZoomChange={editor.handleZoomChange}
+        onMinZoomChange={editor.handleMinZoomChange}
         panRef={editor.panRef}
         showAreas={effectiveShowAreas}
         activeAreaLabel={activeAreaLabel}
@@ -560,6 +562,7 @@ function App() {
           {!isMobile && (
             <ZoomControls
               zoom={editor.zoom}
+              minZoom={editor.minZoom}
               onZoomChange={editor.handleZoomChange}
               onExerciseToggle={() =>
                 officeState.isExercising()

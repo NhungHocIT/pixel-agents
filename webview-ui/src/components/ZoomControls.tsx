@@ -11,19 +11,26 @@ import { Button } from './ui/Button.js';
 
 interface ZoomControlsProps {
   zoom: number;
+  /** Floor below which zoom-out is disabled (defaults to ZOOM_MIN). */
+  minZoom?: number;
   onZoomChange: (zoom: number) => void;
   /** Start an exercise break now, or end the one running. */
   onExerciseToggle?: () => void;
 }
 
-export function ZoomControls({ zoom, onZoomChange, onExerciseToggle }: ZoomControlsProps) {
+export function ZoomControls({
+  zoom,
+  minZoom = ZOOM_MIN,
+  onZoomChange,
+  onExerciseToggle,
+}: ZoomControlsProps) {
   const [showLevel, setShowLevel] = useState(false);
   const [fadeOut, setFadeOut] = useState(false);
   const timerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const fadeTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const prevZoomRef = useRef(zoom);
 
-  const minDisabled = zoom <= ZOOM_MIN;
+  const minDisabled = zoom <= minZoom;
   const maxDisabled = zoom >= ZOOM_MAX;
 
   // Show zoom level briefly when zoom changes
@@ -77,7 +84,7 @@ export function ZoomControls({ zoom, onZoomChange, onExerciseToggle }: ZoomContr
           onClick={() => onZoomChange(zoom + 1)}
           disabled={maxDisabled}
           className="border-border! shadow-pixel disabled:hover:bg-btn-bg disabled:cursor-default disabled:opacity-(--btn-disabled-opacity)"
-          title="Zoom in (Ctrl+Scroll)"
+          title="Zoom in (Scroll)"
         >
           <svg width="18" height="18" viewBox="0 0 18 18" fill="none">
             <line
@@ -105,7 +112,7 @@ export function ZoomControls({ zoom, onZoomChange, onExerciseToggle }: ZoomContr
           onClick={() => onZoomChange(zoom - 1)}
           disabled={minDisabled}
           className="border-border! shadow-pixel disabled:hover:bg-btn-bg disabled:cursor-default disabled:opacity-(--btn-disabled-opacity)"
-          title="Zoom out (Ctrl+Scroll)"
+          title="Zoom out (Scroll)"
         >
           <svg width="18" height="18" viewBox="0 0 18 18" fill="none">
             <line
