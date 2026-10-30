@@ -508,12 +508,10 @@ export class OfficeState {
   }
 
   /** While the user is in League their avatar sits at a gaming PC (bumping a
-   *  patron if they are all taken) and stays there; otherwise it leaves them. */
+   *  patron if they are all taken) and stays there; otherwise TNhunn works,
+   *  eats and plays like everyone else. */
   private steerUserAvatar(p: Character): void {
-    if (!this.userInLeague()) {
-      if (p.restSpot?.kind === 'game') p.restSpot = null;
-      return;
-    }
+    if (!this.userInLeague()) return;
     if (p.isActive || p.seatId) sendPatronToRest(p, PATRON_SEAT_RETRY_SEC);
     p.patronTimer = Math.max(p.patronTimer ?? 0, PATRON_SEAT_RETRY_SEC);
     if (p.restSpot?.kind === 'game') return;
@@ -811,10 +809,7 @@ export class OfficeState {
     if (ch.restSpot || this.restSpots.length === 0) return;
     const holders = [...this.characters.values(), ...this.patrons];
     const taken = (s: RestSpot) => holders.some((o) => o.restSpot && sameSpot(o.restSpot, s));
-    // The user's avatar plays only while the user really is in League (steerUserAvatar)
-    let free = this.restSpots.filter(
-      (s) => !taken(s) && this.restSpotAllowed(s) && !(s.kind === 'game' && this.isUserAvatar(ch)),
-    );
+    let free = this.restSpots.filter((s) => !taken(s) && this.restSpotAllowed(s));
     if (free.length === 0) {
       if (isPatron(ch)) return;
       const bumped = this.patrons.find(
@@ -986,9 +981,9 @@ export class OfficeState {
   }
 
   /** Patrons who can be asked along: not the waiter (working), not TNhunn
-   *  (follows the user's real activity). */
+   *  while the user really is in a League game (stays at the PC). */
   private canBeInvited(ch: Character): boolean {
-    return isPatron(ch) && !this.isWaiter(ch) && !this.isUserAvatar(ch);
+    return isPatron(ch) && !this.isWaiter(ch) && !(this.isUserAvatar(ch) && this.userInLeague());
   }
 
   /** Who can go play pickleball: those patrons, and agents with no work on
@@ -1025,7 +1020,9 @@ export class OfficeState {
     }
     if (free && players && this.court() && !this.pickleball) options.push('pickleball');
     if (options.length === 0) return null;
-    return { to: randomOf(options), accepted: Math.random() < CHAT_INVITE_ACCEPT_CHANCE };
+    // TNhunn leads: when TNhunn asks, everyone comes along
+    const accepted = this.isUserAvatar(a) || Math.random() < CHAT_INVITE_ACCEPT_CHANCE;
+    return { to: randomOf(options), accepted };
   }
 
   /** `ch` is getting up from a table where friends are drinking: it says bye
