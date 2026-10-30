@@ -1,4 +1,5 @@
 import type { ColorValue } from '../../components/ui/types.js';
+import { GAMING_CHAIR_FURNITURE_TYPE } from '../../constants.js';
 import { getColorizedSprite } from '../colorize.js';
 import type {
   FurnitureInstance,
@@ -214,7 +215,10 @@ export function layoutToSeats(furniture: PlacedFurniture[]): Map<string, Seat> {
   // Multi-tile chairs (e.g. 2-tile couches) produce multiple seats.
   for (const item of furniture) {
     const entry = getCatalogEntry(item.type);
-    if (!entry || entry.category !== 'chairs') continue;
+    // Gaming chairs too: the agents' computers in the game room
+    if (!entry || (entry.category !== 'chairs' && item.type !== GAMING_CHAIR_FURNITURE_TYPE)) {
+      continue;
+    }
 
     let seatCount = 0;
     const bgRows = entry.backgroundTiles ?? 0;

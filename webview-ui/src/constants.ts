@@ -36,6 +36,21 @@ export const EXERCISE_MOVE_SEC = 10;
 /** How high (sprite px) a jumping jack lifts the character. */
 export const EXERCISE_HOP_PX = 3;
 
+// ── Working day (local wall clock, minutes after midnight) ───
+/** The game company's day: everyone works in the game room — at a computer or
+ *  talking it over on the sofa — from WORK_START to WORK_END, except at lunch
+ *  and the afternoon break. Outside the day everyone is free as before. */
+export const WORK_START_MIN = 8 * 60;
+export const WORK_END_MIN = 17 * 60 + 30;
+/** Lunch: everyone heads to the bar to eat for LUNCH_MEAL_MIN, then is free
+ *  until LUNCH_END. */
+export const LUNCH_START_MIN = 12 * 60 + 2;
+export const LUNCH_MEAL_MIN = 30;
+export const LUNCH_END_MIN = 13 * 60 + 35;
+/** The afternoon break: free time. */
+export const BREAK_START_MIN = 15 * 60 + 30;
+export const BREAK_END_MIN = 15 * 60 + 45;
+
 // ── Bar theme (beer mug + sleeping blanket overlays) ────────
 /** Furniture type idle agents walk to and sleep in. */
 export const BED_FURNITURE_TYPE = 'BED';

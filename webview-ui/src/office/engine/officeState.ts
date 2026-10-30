@@ -122,6 +122,8 @@ import {
 } from './exercise.js';
 import type { LolStatus } from './lolStatus.js';
 import { lolTitle } from './lolStatus.js';
+import type { LunchSession } from './lunch.js';
+import { joinLunch, leaveLunch, updateLuncher } from './lunch.js';
 import { advanceMatrixEffect, startMatrixEffect } from './matrixEffectState.js';
 import { createPet, updatePet } from './petEntity.js';
 import type { PickleballCourt, PickleballGame } from './pickleball.js';
@@ -136,6 +138,8 @@ import { anchorTile, closestFreeSeat } from './seatPlacement.js';
 import type { WaiterRound } from './waiter.js';
 import { isServable, isWaitingOnOrder, newWaiterRound, serveSpots, workInPlace } from './waiter.js';
 import { startWalk, stepWalk } from './walking.js';
+import type { DayPhase } from './workSchedule.js';
+import { dayPhaseAt } from './workSchedule.js';
 
 /** Palettes of TNhunn (the user's avatar, owner of the agents) and the waiter —
  *  never given to an agent. */
@@ -232,6 +236,14 @@ export class OfficeState {
   private waiterHome: { col: number; row: number } | null = null;
   private servedAt = new Map<Character, number>();
   private clockSec = 0;
+  /** The working day (workSchedule): where it is at, lunch at the bar in
+   *  progress, the gaming chairs the agents work at, and the game room's floor
+   *  (where everyone stays at work). `now` is swappable for tests. */
+  now: () => Date = () => new Date();
+  private dayPhase: DayPhase = 'free';
+  private lunch: LunchSession | null = null;
+  private workSeatUids = new Set<string>();
+  private roomTiles: Array<{ col: number; row: number }> = [];
 
   setAreaMappings(mappings: Record<string, string[]>): void {
     this.areaMappings = mappings;
@@ -253,6 +265,8 @@ export class OfficeState {
    *  @param shift Optional pixel shift to apply when grid expands left/up */
   rebuildFromLayout(layout: OfficeLayout, shift?: { col: number; row: number }): void {
     this.stopExercise(); // the line was laid out on the old floor
+    this.endLunch(); // so were the lunch seats; it starts again on the new floor
+    if (this.dayPhase === 'lunch') this.dayPhase = 'free';
     this.waiterHome = null;
     this.waiterRound = newWaiterRound(WAITER_PAUSE_MIN_SEC);
     this.layout = layout;
@@ -497,7 +511,7 @@ export class OfficeState {
     if (p.restSpot?.kind === 'game') return;
     const holders = [...this.characters.values(), ...this.patrons];
     const holderOf = (s: RestSpot) => holders.find((o) => o.restSpot && sameSpot(o.restSpot, s));
-    const games = this.restSpots.filter((s) => s.kind === 'game');
+    const games = this.restSpots.filter((s) => s.kind === 'game' && this.restSpotAllowed(s));
     const dist = (s: RestSpot) => Math.abs(s.col - p.tileCol) + Math.abs(s.row - p.tileRow);
     const pick =
       games.filter((s) => !holderOf(s)).sort((a, b) => dist(a) - dist(b))[0] ??
@@ -726,12 +740,27 @@ export class OfficeState {
         .map((f) => f.uid),
     );
     this.rebuildTableSetting();
-    // Beer belongs to the bar: the floors its (non-sofa) seats stand on
+    // The agents' computers: gaming chairs (seats too, see layoutToSeats)
+    const gamingChairs = new Set(
+      this.layout.furniture.filter((f) => f.type === GAMING_CHAIR_FURNITURE_TYPE).map((f) => f.uid),
+    );
+    this.workSeatUids = new Set(
+      [...this.seats.keys()].filter((uid) => gamingChairs.has(uid.split(':')[0])),
+    );
+    // Beer belongs to the bar: the floors its (non-sofa, non-computer) seats stand on
+    const floorOf = (s: Seat) => this.tileMap[s.seatRow]?.[s.seatCol];
     this.beerFloors = new Set(
       [...this.seats.values()]
-        .filter((s) => !this.isSofaSeat(s.uid))
-        .map((s) => this.tileMap[s.seatRow]?.[s.seatCol]),
+        .filter((s) => !this.isSofaSeat(s.uid) && !this.workSeatUids.has(s.uid))
+        .map(floorOf),
     );
+    // The game room: the floors under the computers and the sofa
+    const roomFloors = new Set(
+      [...this.seats.values()]
+        .filter((s) => this.isSofaSeat(s.uid) || this.workSeatUids.has(s.uid))
+        .map(floorOf),
+    );
+    this.roomTiles = this.walkableTiles.filter((t) => roomFloors.has(this.tileMap[t.row]?.[t.col]));
     for (const item of this.layout.furniture) {
       if (item.type === BED_FURNITURE_TYPE) {
         const entry = getCatalogEntry(item.type);
@@ -760,6 +789,8 @@ export class OfficeState {
    *  back once the character is up and off it. Agents bump patrons when full. */
   private updateRestAssignment(ch: Character): void {
     if (ch.isSubagent) return;
+    // At work nobody sleeps, and an agent's computer is the agent's
+    if (ch.restSpot && !this.restSpotAllowed(ch.restSpot)) ch.restSpot = null;
     if (ch.isActive) {
       const spot = ch.restSpot;
       if (spot && (ch.tileCol !== spot.col || ch.tileRow !== spot.row)) ch.restSpot = null;
@@ -770,12 +801,15 @@ export class OfficeState {
     const taken = (s: RestSpot) => holders.some((o) => o.restSpot && sameSpot(o.restSpot, s));
     // The user's avatar plays only while the user really is in League (steerUserAvatar)
     let free = this.restSpots.filter(
-      (s) => !taken(s) && !(s.kind === 'game' && this.isUserAvatar(ch)),
+      (s) => !taken(s) && this.restSpotAllowed(s) && !(s.kind === 'game' && this.isUserAvatar(ch)),
     );
     if (free.length === 0) {
       if (isPatron(ch)) return;
       const bumped = this.patrons.find(
-        (p) => p.restSpot && !(this.isUserAvatar(p) && this.userInLeague()),
+        (p) =>
+          p.restSpot &&
+          this.restSpotAllowed(p.restSpot) &&
+          !(this.isUserAvatar(p) && this.userInLeague()),
       );
       if (!bumped) return;
       ch.restSpot = bumped.restSpot!;
@@ -822,10 +856,22 @@ export class OfficeState {
     if (isPatron(ch) && storyTiesOf(characterNameOf(ch)).wanderer) this.getLost(ch);
   }
 
+  /** A rest spot anyone may take now: no bed during work hours, and not a
+   *  gaming chair an agent works at. */
+  private restSpotAllowed(s: RestSpot): boolean {
+    if (s.kind === 'bed' && this.dayPhase === 'work') return false;
+    return ![...this.seats.values()].some(
+      (seat) => seat.assigned && seat.seatCol === s.col && seat.seatRow === s.row,
+    );
+  }
+
   /** A free bar seat for a patron: not an agent's, not another patron's.
    *  Storyline ties pick the free seat nearest the partner / buddy / leader. */
   private pickPatronSeat(p: Character): string | null {
-    const free = this.freePatronSeats([p]);
+    // At work, a seat in the game room means the sofa: talking it over
+    const free = this.freePatronSeats([p]).filter(
+      (s) => this.dayPhase !== 'work' || this.isSofaSeat(s.uid),
+    );
     if (free.length === 0) return null;
     const anchorSeatId = this.storyAnchor(p)?.seatId;
     const anchorSeat = anchorSeatId ? this.seats.get(anchorSeatId) : undefined;
@@ -843,12 +889,15 @@ export class OfficeState {
     return randomOf(joinable.length > 0 ? joinable : free).uid;
   }
 
-  /** Seats no agent holds and no patron but `except` has taken. */
+  /** Seats no agent holds and no patron but `except` has taken. Not the
+   *  computers: patrons play at those as a rest spot. */
   private freePatronSeats(except: Character[]): Seat[] {
     const used = new Set(
       this.patrons.filter((o) => !except.includes(o) && o.seatId).map((o) => o.seatId),
     );
-    return [...this.seats.values()].filter((s) => !s.assigned && !used.has(s.uid));
+    return [...this.seats.values()].filter(
+      (s) => !s.assigned && !used.has(s.uid) && !this.workSeatUids.has(s.uid),
+    );
   }
 
   /** The seat `ch` is sitting in right now (not just walking to). */
@@ -929,13 +978,16 @@ export class OfficeState {
     const players = this.canPlay(a) && this.canPlay(b);
     if (!patrons && !players) return null;
     if (this.tablemates(a).length > 0 || this.tablemates(b).length > 0) return null;
+    if (this.lunch) return null; // lunch: everyone stays at the bar
     if (Math.random() >= CHAT_INVITE_CHANCE) return null;
+    // At work, only to the sofa to talk it over: no beer, no pickleball
+    const free = this.dayPhase !== 'work';
     const options: InviteTo[] = [];
-    if (patrons && this.seatsTogether(a, b, 'beer')) options.push('beer');
+    if (free && patrons && this.seatsTogether(a, b, 'beer')) options.push('beer');
     if (patrons && !a.onSofa && !b.onSofa && this.seatsTogether(a, b, 'sofa')) {
       options.push('sofa');
     }
-    if (players && this.court() && !this.pickleball) options.push('pickleball');
+    if (free && players && this.court() && !this.pickleball) options.push('pickleball');
     if (options.length === 0) return null;
     return { to: randomOf(options), accepted: Math.random() < CHAT_INVITE_ACCEPT_CHANCE };
   }
@@ -1157,6 +1209,8 @@ export class OfficeState {
       ch.noBeer =
         !this.beerFloors.has(this.tileMap[ch.tileRow]?.[ch.tileCol]) ||
         (isPatron(ch) && this.tablemates(ch).length === 0);
+      // Lunch: whoever is seated at the bar eats and drinks
+      if (this.lunch?.seats.get(ch)) ch.noBeer = false;
       const seat = ch.seatId ? this.seats.get(ch.seatId) : undefined;
       const seated =
         ch.state === CharacterState.TYPE &&
@@ -1361,6 +1415,10 @@ export class OfficeState {
     if (p.seatId) {
       const seat = this.seats.get(p.seatId);
       if (!seat || seat.assigned) sendPatronToRest(p, PATRON_SEAT_RETRY_SEC);
+      // Work time: off the bar seats, back to the game room
+      else if (this.dayPhase === 'work' && !this.isSofaSeat(seat.uid)) {
+        sendPatronToRest(p, PATRON_SEAT_RETRY_SEC);
+      }
     }
     if (this.isUserAvatar(p)) this.steerUserAvatar(p);
     // Done drinking with friends at the table: say bye first, go once it's said
@@ -1376,9 +1434,16 @@ export class OfficeState {
     this.updateRestAssignment(p);
     this.withOwnRestSpotUnblocked(p, () =>
       this.withOwnSeatUnblocked(p, () =>
-        updateCharacter(p, dt, this.walkableTiles, this.seats, this.tileMap, this.blockedTiles),
+        updateCharacter(p, dt, this.wanderTiles(), this.seats, this.tileMap, this.blockedTiles),
       ),
     );
+  }
+
+  /** Where idle characters may wander: the game room at work, anywhere otherwise. */
+  private wanderTiles(): Array<{ col: number; row: number }> {
+    return this.dayPhase === 'work' && this.roomTiles.length > 0
+      ? this.roomTiles
+      : this.walkableTiles;
   }
 
   /** Temporarily unblock a character's own rest tile, run fn, then re-block */
@@ -1450,6 +1515,9 @@ export class OfficeState {
    */
   private pickFromSeats(seatUids: string[], electronicsTiles: Set<string>): string | null {
     if (seatUids.length === 0) return null;
+    // Agents work at the computers in the game room first
+    const workSeats = seatUids.filter((uid) => this.workSeatUids.has(uid));
+    if (workSeats.length > 0) return workSeats[Math.floor(Math.random() * workSeats.length)];
     const pcSeats: string[] = [];
     const otherSeats: string[] = [];
     for (const uid of seatUids) {
@@ -1940,7 +2008,8 @@ export class OfficeState {
     const ch = this.characters.get(id);
     if (ch) {
       ch.isActive = active;
-      if (!active) {
+      // On the way to lunch: keep walking there
+      if (!active && !this.lunch?.members.includes(ch)) {
         // Sentinel -1: signals turn just ended, skip next seat rest timer.
         // Prevents the WALK handler from setting a 2-4 min rest on arrival.
         ch.seatTimer = -1;
@@ -2249,7 +2318,7 @@ export class OfficeState {
    *  EXERCISE_INTERVAL_MS; callable directly to start one now. */
   startExercise(): void {
     this.nextExerciseAt = Date.now() + EXERCISE_INTERVAL_MS;
-    if (this.exercise) return;
+    if (this.exercise || this.lunch) return;
     this.endPickleballGame(); // everyone joins the break, players too
     const members = [
       ...[...this.characters.values()].filter((ch) => !ch.matrixEffect),
@@ -2352,6 +2421,121 @@ export class OfficeState {
     this.waiterRound = newWaiterRound(WAITER_PAUSE_MIN_SEC);
   }
 
+  /** Follow the working day (workSchedule): lunch starts and ends on the
+   *  clock, and work time ends any pickleball game — everyone back to the
+   *  game room. */
+  private tickDay(): void {
+    const phase = dayPhaseAt(this.now());
+    if (phase === this.dayPhase) return;
+    // Lunch waits for the patrons (they come once the sprites load)
+    this.ensurePatrons();
+    if (phase === 'lunch' && BAR_PATRONS_ENABLED && this.patrons.length === 0) return;
+    const was = this.dayPhase;
+    this.dayPhase = phase;
+    if (was === 'lunch') this.endLunch();
+    if (phase === 'lunch') this.startLunch();
+    if (phase === 'work') this.endPickleballGame();
+  }
+
+  /** Lunch: every agent and visible patron but the waiter (who serves them)
+   *  and TNhunn in a League game walks to the bar, sits at a free bar seat —
+   *  the nearest one first — or, with none left, stands on the bar floor. */
+  private startLunch(): void {
+    this.stopExercise();
+    this.endPickleballGame();
+    const members = [
+      ...[...this.characters.values()].filter((ch) => !ch.matrixEffect && !ch.isSubagent),
+      ...this.getVisiblePatrons().filter(
+        (p) => !this.isWaiter(p) && !(this.isUserAvatar(p) && this.userInLeague()),
+      ),
+    ];
+    if (members.length === 0) return;
+    for (const ch of members) ch.speech = null;
+    this.chats = [];
+    const onBar = (col: number, row: number) => this.beerFloors.has(this.tileMap[row]?.[col]);
+    const freeSeats = [...this.seats.values()].filter(
+      (s) =>
+        !this.isSofaSeat(s.uid) &&
+        !this.workSeatUids.has(s.uid) &&
+        onBar(s.seatCol, s.seatRow) &&
+        !s.assigned,
+    );
+    const freeTiles = this.walkableTiles.filter((t) => onBar(t.col, t.row));
+    const seats = new Map<Character, Seat | null>();
+    for (const ch of members) {
+      const dist = (col: number, row: number) =>
+        Math.abs(col - ch.tileCol) + Math.abs(row - ch.tileRow);
+      // An agent whose own seat is at the bar eats there
+      const own = !isPatron(ch) && ch.seatId ? this.seats.get(ch.seatId) : undefined;
+      let seat =
+        own && onBar(own.seatCol, own.seatRow) && !this.isSofaSeat(own.uid) ? own : undefined;
+      if (!seat && freeSeats.length > 0) {
+        seat = freeSeats.reduce((m, s) =>
+          dist(s.seatCol, s.seatRow) < dist(m.seatCol, m.seatRow) ? s : m,
+        );
+        freeSeats.splice(freeSeats.indexOf(seat), 1);
+      }
+      let target: { col: number; row: number } | null = null;
+      if (seat) {
+        target = { col: seat.seatCol, row: seat.seatRow };
+      } else if (freeTiles.length > 0) {
+        const tile = freeTiles.reduce((m, t) => (dist(t.col, t.row) < dist(m.col, m.row) ? t : m));
+        freeTiles.splice(freeTiles.indexOf(tile), 1);
+        target = tile;
+      }
+      if (isPatron(ch)) {
+        ch.seatId = null;
+        ch.isActive = false;
+      }
+      ch.restSpot = null;
+      seats.set(ch, seat ?? null);
+      joinLunch(ch, target ? this.pathOnto(ch, target) : [], seat ?? null);
+    }
+    this.lunch = { members, seats };
+  }
+
+  /** Lunch over: everyone is free until work starts again (patrons rest a
+   *  moment first, so the bar doesn't empty in one frame). */
+  private endLunch(): void {
+    const lunch = this.lunch;
+    if (!lunch) return;
+    for (const ch of lunch.members) {
+      leaveLunch(ch);
+      if (isPatron(ch)) sendPatronToRest(ch, randomBetween(0, PATRON_SEAT_RETRY_SEC));
+    }
+    this.lunch = null;
+  }
+
+  /** A path onto `to`, even when it is a seat tile (blocked for walking past). */
+  private pathOnto(
+    ch: Character,
+    to: { col: number; row: number },
+  ): Array<{ col: number; row: number }> {
+    const key = `${to.col},${to.row}`;
+    const wasBlocked = this.blockedTiles.delete(key);
+    const path = this.pathFor(ch, to);
+    if (wasBlocked) this.blockedTiles.add(key);
+    return path;
+  }
+
+  /** Agents work at the computers in the game room: one still holding a seat
+   *  elsewhere (restored from before, or seated while none was free) moves to
+   *  the nearest free one. */
+  private moveAgentsToWorkSeats(busy: Set<Character>): void {
+    for (const ch of this.characters.values()) {
+      if (ch.isSubagent || ch.matrixEffect || busy.has(ch)) continue;
+      if (ch.seatId && this.workSeatUids.has(ch.seatId)) continue;
+      const free = [...this.workSeatUids]
+        .map((uid) => this.seats.get(uid))
+        .filter((s): s is Seat => s !== undefined && !s.assigned);
+      if (free.length === 0) return;
+      const dist = (s: Seat) => Math.abs(s.seatCol - ch.tileCol) + Math.abs(s.seatRow - ch.tileRow);
+      const seat = free.reduce((m, s) => (dist(s) < dist(m) ? s : m));
+      ch.restSpot = null;
+      this.reassignSeat(ch.id, seat.uid);
+    }
+  }
+
   update(dt: number): void {
     this.clockSec += dt;
     // Furniture animation cycling
@@ -2368,10 +2552,13 @@ export class OfficeState {
       this.greeter = null;
     }
 
-    if (!this.exercise && Date.now() >= this.nextExerciseAt) this.startExercise();
+    this.tickDay();
+    if (!this.exercise && !this.lunch && Date.now() >= this.nextExerciseAt) this.startExercise();
     const inLine = new Set(this.exercise?.members);
+    const atLunch = this.lunch?.seats ?? new Map<Character, Seat | null>();
     const onCourt = new Set(this.pickleball?.players); // moved by tickPickleball
     const held = this.heldForHello();
+    this.moveAgentsToWorkSeats(new Set([...inLine, ...atLunch.keys(), ...onCourt]));
 
     const toDelete: number[] = [];
     for (const ch of this.characters.values()) {
@@ -2384,6 +2571,8 @@ export class OfficeState {
       const partner = held.get(ch);
       if (inLine.has(ch)) {
         updateExerciser(ch, dt);
+      } else if (atLunch.has(ch)) {
+        updateLuncher(ch, atLunch.get(ch) ?? null, dt);
       } else if (onCourt.has(ch)) {
         // Playing pickleball: tickPickleball moves it
       } else if (partner) {
@@ -2403,7 +2592,7 @@ export class OfficeState {
             updateCharacter(
               ch,
               dt,
-              this.walkableTiles,
+              this.wanderTiles(),
               this.seats,
               this.tileMap,
               this.blockedTiles,
@@ -2439,6 +2628,7 @@ export class OfficeState {
       if (onCourt.has(p)) continue; // on court: tickPickleball
       const partner = held.get(p);
       if (inLine.has(p)) updateExerciser(p, dt);
+      else if (atLunch.has(p)) updateLuncher(p, atLunch.get(p) ?? null, dt);
       else if (partner) this.holdForHello(p, partner);
       else if (this.isWaiter(p)) this.updateWaiter(p, dt);
       else this.updatePatron(p, dt);
