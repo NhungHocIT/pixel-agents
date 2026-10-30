@@ -24,7 +24,7 @@ import type {
   RotateButtonBounds,
   SelectionRenderState,
 } from '../engine/renderer.js';
-import { renderCelebration, renderFrame } from '../engine/renderer.js';
+import { renderCelebration, renderFrame, renderNight } from '../engine/renderer.js';
 import { contentBounds } from '../projection.js';
 import { EditTool, TILE_SIZE } from '../types.js';
 import { computeNormalModeCursor } from './officeCanvasCursor.js';
@@ -314,6 +314,11 @@ export function OfficeCanvas({
           officeState.pets,
         );
         offsetRef.current = { x: offsetX, y: offsetY };
+
+        // Day and night: dark outside, lit where the lights are on (not while editing)
+        if (!isEditMode) {
+          renderNight(ctx, officeState.tileMap, officeState.getLighting(), offsetX, offsetY, zoom);
+        }
 
         // TNhunn won a League match: fireworks and the banner over everything
         const celebration = officeState.getCelebration();

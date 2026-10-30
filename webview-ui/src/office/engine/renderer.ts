@@ -34,6 +34,11 @@ import {
   GRID_LINE_COLOR,
   HEADLESS_CHARACTER_ALPHA,
   HOVERED_OUTLINE_ALPHA,
+  LAMP_ALPHA,
+  LAMP_COLOR,
+  NIGHT_ALPHA,
+  NIGHT_COLOR,
+  NIGHT_LIT_ALPHA,
   OUTLINE_Z_SORT_OFFSET,
   ROTATE_BUTTON_BG,
   SEAT_AVAILABLE_COLOR,
@@ -1022,6 +1027,40 @@ export function renderFrame(
   }
 
   return { offsetX, offsetY };
+}
+
+/** Night over the finished frame: each tile darkened by how dark it is
+ *  outside, less where its room's lights are on (a warm wash there). The
+ *  void just above a wall is darkened with it, for the wall's top. */
+export function renderNight(
+  ctx: CanvasRenderingContext2D,
+  tileMap: TileTypeVal[][],
+  lighting: { darkness: number; lightAt: (col: number, row: number) => number },
+  offsetX: number,
+  offsetY: number,
+  zoom: number,
+): void {
+  const { darkness, lightAt } = lighting;
+  if (darkness <= 0) return;
+  const s = TILE_SIZE * zoom;
+  ctx.save();
+  for (let r = 0; r < tileMap.length; r++) {
+    for (let c = 0; c < tileMap[r].length; c++) {
+      if (tileMap[r][c] === TileType.VOID && tileMap[r + 1]?.[c] !== TileType.WALL) continue;
+      const lit = lightAt(c, r);
+      const x = offsetX + c * s;
+      const y = offsetY + r * s;
+      ctx.globalAlpha = darkness * (NIGHT_ALPHA + (NIGHT_LIT_ALPHA - NIGHT_ALPHA) * lit);
+      ctx.fillStyle = NIGHT_COLOR;
+      ctx.fillRect(x, y, s, s);
+      if (lit > 0) {
+        ctx.globalAlpha = darkness * LAMP_ALPHA * lit;
+        ctx.fillStyle = LAMP_COLOR;
+        ctx.fillRect(x, y, s, s);
+      }
+    }
+  }
+  ctx.restore();
 }
 
 /** Fireworks and the banner, over the finished frame (device px). */

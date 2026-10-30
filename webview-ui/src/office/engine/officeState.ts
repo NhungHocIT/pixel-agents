@@ -101,6 +101,8 @@ import {
   updateCelebration,
 } from './celebration.js';
 import { characterDrawOffsetPx, createCharacter, updateCharacter } from './characters.js';
+import type { RoomLight } from './dayNight.js';
+import { darknessAt, findRooms, newRoomLight, shownLevel, tickLight } from './dayNight.js';
 import type { ChatPlace, InviteTo } from './dialogues.js';
 import {
   FAREWELL,
@@ -244,6 +246,11 @@ export class OfficeState {
   private lunch: LunchSession | null = null;
   private workSeatUids = new Set<string>();
   private roomTiles: Array<{ col: number; row: number }> = [];
+  /** Day and night (dayNight): how dark it is outside, each tile's room, and
+   *  each room's lights. */
+  private darkness = 0;
+  private roomOf: number[][] = [];
+  private lights: RoomLight[] = [];
 
   setAreaMappings(mappings: Record<string, string[]>): void {
     this.areaMappings = mappings;
@@ -733,6 +740,10 @@ export class OfficeState {
   private chats: BarChat[] = [];
 
   private rebuildRestSpots(): void {
+    // Each room gets its own lights (off until someone needs them)
+    const rooms = findRooms(this.tileMap);
+    this.roomOf = rooms.roomOf;
+    this.lights = Array.from({ length: rooms.count }, newRoomLight);
     this.restSpots = [];
     this.sofaUids = new Set(
       this.layout.furniture
@@ -2639,6 +2650,7 @@ export class OfficeState {
     this.holdCustomer();
     this.tickPickleball(dt);
     this.tickCelebration(dt); // last, so the cheers win over other chatter
+    this.tickLights(dt);
 
     // ── Pet FSM ────────────────────────────────────────────────
     for (const pet of this.pets) {
@@ -2689,6 +2701,38 @@ export class OfficeState {
 
   /** What the canvas draws: `getCharacters()` plus the bar patrons. Kept apart
    *  so agent-facing consumers (e2e hooks, overlays) never see patrons. */
+  /** Lights on where someone is, once it gets dark (see dayNight). */
+  private tickLights(dt: number): void {
+    this.darkness = darknessAt(this.now());
+    const occupied = this.lights.map(() => false);
+    for (const ch of this.getDrawnCharacters()) {
+      const room = this.roomOf[ch.tileRow]?.[ch.tileCol] ?? -1;
+      if (room >= 0) occupied[room] = true;
+    }
+    this.lights.forEach((light, i) => tickLight(light, occupied[i], this.darkness, dt));
+  }
+
+  /** For the canvas: how dark it is outside, and how lit (0–1) each tile's
+   *  room is. Walls take the light of the brightest room beside them. */
+  getLighting(): { darkness: number; lightAt: (col: number, row: number) => number } {
+    const roomLight = (col: number, row: number) => {
+      const room = this.roomOf[row]?.[col] ?? -1;
+      return room >= 0 ? shownLevel(this.lights[room]) : -1;
+    };
+    return {
+      darkness: this.darkness,
+      lightAt: (col, row) => {
+        const own = roomLight(col, row);
+        if (own >= 0) return own;
+        let best = 0;
+        for (let dr = -1; dr <= 2; dr++) {
+          for (let dc = -1; dc <= 1; dc++) best = Math.max(best, roomLight(col + dc, row + dr));
+        }
+        return best;
+      },
+    };
+  }
+
   getDrawnCharacters(): Character[] {
     return [...this.getCharacters(), ...this.getVisiblePatrons()];
   }

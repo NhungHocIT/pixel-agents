@@ -51,6 +51,27 @@ export const LUNCH_END_MIN = 13 * 60 + 35;
 export const BREAK_START_MIN = 15 * 60 + 30;
 export const BREAK_END_MIN = 15 * 60 + 45;
 
+// ── Day and night (local wall clock, minutes after midnight) ─
+/** Dusk falls from DUSK_START to NIGHT_START; dawn breaks from DAWN_START to DAY_START. */
+export const DAWN_START_MIN = 5 * 60 + 30;
+export const DAY_START_MIN = 6 * 60 + 30;
+export const DUSK_START_MIN = 17 * 60 + 30;
+export const NIGHT_START_MIN = 18 * 60 + 30;
+/** The night over an unlit room, and what is left of it where the lights are on. */
+export const NIGHT_COLOR = '#0B1030';
+export const NIGHT_ALPHA = 0.62;
+export const NIGHT_LIT_ALPHA = 0.15;
+/** The warm wash of a lit room at night. */
+export const LAMP_COLOR = '#FFD27A';
+export const LAMP_ALPHA = 0.08;
+/** Lights go on this dark (0–1) when someone is in the room... */
+export const LIGHTS_ON_DARKNESS = 0.3;
+/** ...and off once it has stood empty this long. */
+export const LIGHTS_OFF_DELAY_SEC = 15;
+/** Switching: the flicker of a tube light coming on, and the fade. */
+export const LIGHT_FLICKER_SEC = 0.6;
+export const LIGHT_FADE_SEC = 0.15;
+
 // ── Bar theme (beer mug + sleeping blanket overlays) ────────
 /** Furniture type idle agents walk to and sleep in. */
 export const BED_FURNITURE_TYPE = 'BED';
