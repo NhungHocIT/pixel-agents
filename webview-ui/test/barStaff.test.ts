@@ -29,6 +29,7 @@ afterEach(() => setCharacterTemplates([]));
 test('agents never get the TNhunn or waiter skin', () => {
   loadCast();
   const office = new OfficeState();
+  office.now = () => new Date(2026, 0, 5, 10, 0); // a work morning, not lunch on the wall clock
   for (let id = 1; id <= 30; id++) office.addAgent(id);
   office.addAgent(99, OWNER); // a saved seat from before
   for (const ch of office.characters.values()) {
@@ -40,6 +41,7 @@ test('agents never get the TNhunn or waiter skin', () => {
 test('the waiter walks up to a seated agent and has a word with them', () => {
   loadCast();
   const office = new OfficeState();
+  office.now = () => new Date(2026, 0, 5, 10, 0); // a work morning, not lunch on the wall clock
   office.addAgent(1, undefined, undefined, undefined, true); // no seat: drinks in place
   const agent = office.characters.get(1)!;
   let served = false;
@@ -56,6 +58,7 @@ test('the waiter walks up to a seated agent and has a word with them', () => {
 test('an order: the customer waits on it, then thanks the waiter before carrying on', () => {
   loadCast();
   const office = new OfficeState();
+  office.now = () => new Date(2026, 0, 5, 10, 0); // a work morning, not lunch on the wall clock
   office.addAgent(1, undefined, undefined, undefined, true); // no seat: drinks in place
   const agent = office.characters.get(1)!;
   const waiterOf = () => office.getVisiblePatrons().find((p) => p.palette === WAITER)!;

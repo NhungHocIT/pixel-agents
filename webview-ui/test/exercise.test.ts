@@ -72,6 +72,7 @@ test('a crowd too big for one row overflows into further rows, no tile used twic
 
 test('everyone walks into line, works out, then returns to their seat', () => {
   const office = new OfficeState();
+  office.now = () => new Date(2026, 0, 5, 10, 0); // a work morning, not lunch on the wall clock
   office.addAgent(1);
   office.addAgent(2);
   const agents = [...office.characters.values()];
