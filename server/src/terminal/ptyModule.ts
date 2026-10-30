@@ -36,6 +36,9 @@ export interface PtySpawnOptions {
   rows: number;
   cwd: string;
   env: Record<string, string>;
+  /** Windows: use the conpty.dll + OpenConsole.exe bundled with node-pty
+   *  instead of the OS's inbox ConPTY. Ignored elsewhere. */
+  useConptyDll?: boolean;
 }
 
 export interface PtyModule {

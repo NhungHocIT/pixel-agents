@@ -85,6 +85,16 @@ export class PtySession {
       this.serializeAddon as unknown as Parameters<HeadlessTerminal['loadAddon']>[0],
     );
 
+    // Terminal query replies (DA1, cursor position). The bundled ConPTY asks
+    // for DA1 at startup and holds all input until it is answered — a browser
+    // tab answers when attached, but an agent launched with no terminal open
+    // would never take a keystroke. The mirror answers only then: with a tab
+    // attached it would answer twice, and the spare reply would reach the TUI
+    // as typed input.
+    this.mirror.onData((reply) => {
+      if (this.dataListeners.size === 0 && !this.exit) this.pty.write(reply);
+    });
+
     this.pty.onData((raw) => {
       // ConPTY passes SO/SI through as printed cells; see conptyOutput.ts
       const chunk = process.platform === 'win32' ? normalizeConptyOutput(raw) : raw;
@@ -361,6 +371,13 @@ function spawnPty(
     rows,
     cwd: options.cwd,
     env,
+    // The inbox ConPTY of Windows 10 swallows the alternate-screen and
+    // mouse-tracking modes and never delivers mouse input, so Claude Code's
+    // full-screen UI ran blind inside xterm: the wheel scrolled xterm's own
+    // (empty) scrollback instead of the transcript, and earlier turns were
+    // unreachable. The bundled ConPTY passes both through, as conhost does
+    // for a real console window.
+    useConptyDll: process.platform === 'win32',
   });
 }
 

@@ -130,6 +130,8 @@ describe('PtySessionManager lifecycle', () => {
     expect(spawnArgs[0].args).toEqual(['--session-id', 'x']);
     expect(spawnArgs[0].options.cwd).toBe('/tmp');
     expect((spawnArgs[0].options.env as Record<string, string>).TERM).toBeTruthy();
+    // The inbox ConPTY hides Claude Code's mouse/alt-screen modes from xterm.
+    expect(spawnArgs[0].options.useConptyDll).toBe(process.platform === 'win32');
   });
 
   it('tracks sessions by agent id', () => {
@@ -318,6 +320,21 @@ describe('PtySession streaming', () => {
     await Promise.resolve();
 
     expect(exits).toEqual([1]);
+  });
+
+  it('answers terminal queries itself only while no client is attached', async () => {
+    const { manager, spawned } = harness();
+    const session = create(manager, 1);
+    spawned[0].emit('\x1b[c');
+    await session.snapshot(); // flush the mirror's parse queue
+    expect(spawned[0].written.join('')).toMatch(/^\x1b\[\?[\d;]+c$/);
+
+    spawned[0].written = [];
+    const off = session.onData(() => {});
+    spawned[0].emit('\x1b[c');
+    await session.snapshot();
+    expect(spawned[0].written).toEqual([]); // the attached tab answers instead
+    off();
   });
 });
 
