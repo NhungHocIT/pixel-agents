@@ -110,7 +110,7 @@ export const EXERCISE = {
   gatherCalls: [
     'Tới giờ tập thể dục rồi mấy đứa ơi! 💪',
     'Đứng dậy nào, xếp hàng ngay ngắn!',
-    'Rời bàn phím 10 phút thôi, nhanh lên!',
+    'Rời bàn phím 3 phút thôi, nhanh lên!',
     'Ai ra chậm nhất tối nay rửa ly nhé 😏',
   ],
   gatherReplies: [

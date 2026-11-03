@@ -24,9 +24,9 @@ export const SLEEP_FRAME_DURATION_SEC = 0.8;
 
 // ── Exercise break (everyone lines up and works out) ────────
 /** Time between exercise breaks (wall clock). */
-export const EXERCISE_INTERVAL_MS = 45 * 60 * 1000;
+export const EXERCISE_INTERVAL_MS = 90 * 60 * 1000;
 /** How long the workout itself lasts, once the line has formed. */
-export const EXERCISE_WORKOUT_SEC = 10 * 60;
+export const EXERCISE_WORKOUT_SEC = 3 * 60;
 /** Longest wait for stragglers to reach the line before starting anyway. */
 export const EXERCISE_GATHER_MAX_SEC = 30;
 /** One beat of an exercise move (hop up / land, twist left / right...). */
