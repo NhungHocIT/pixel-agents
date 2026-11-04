@@ -1,3 +1,5 @@
+import * as fs from 'fs';
+
 import type { StateAdapter } from '../../core/src/adapter.js';
 import {
   isOfficeShellId,
@@ -30,11 +32,37 @@ import type { ConsentEffects } from './providers/hook/consentExecutor.js';
 import { applyConsentChoice } from './providers/hook/consentExecutor.js';
 import { hooksConsentRequest } from './providers/hook/consentGate.js';
 import { claudeProvider, hookProviderById, hookProviders } from './providers/index.js';
+import { collectSessionHistory, findSessionInHistory } from './sessionHistory.js';
 import { closeAgentShell, hasAgentShell, openAgentShell } from './terminal/agentShell.js';
 import type { PtySessionManager } from './terminal/ptySessionManager.js';
 import { launchStandaloneAgent } from './terminal/standaloneAgentLauncher.js';
 
 type WsSend = (message: Record<string, unknown>) => void;
+
+/** The agent in this office currently running `sessionId`, if any. */
+function runningAgentIdFor(store: AgentStateStore, sessionId: string): number | undefined {
+  for (const agent of store.values()) {
+    if (agent.sessionId === sessionId) return agent.id;
+  }
+  return undefined;
+}
+
+/** History tab: every past session with its tokens, to this client only. */
+async function replySessionHistory(store: AgentStateStore, send: WsSend): Promise<void> {
+  try {
+    const sessions = await collectSessionHistory(claudeProvider);
+    send({
+      type: 'sessionHistory',
+      sessions: sessions.map(({ transcriptPath: _path, ...entry }) => ({
+        ...entry,
+        runningAgentId: runningAgentIdFor(store, entry.sessionId),
+      })),
+    });
+  } catch (err) {
+    console.error(`[Pixel Agents] Session history: ${String(err)}`);
+    send({ type: 'sessionHistory', sessions: [] });
+  }
+}
 
 /** Async hook toggle side effect (install/uninstall + script copy). Provided by cli.ts. */
 export type SetHooksEnabledSideEffect = (
@@ -378,6 +406,46 @@ export function handleClientMessage(
           collectDirectorySuggestions(claudeProvider, shownHostDirectoriesFor(ctx)),
       });
       break;
+
+    case 'requestSessionHistory':
+      void replySessionHistory(store, send);
+      break;
+
+    case 'resumeSession': {
+      if (!runtime || !ctx.ptyManager) break;
+      const ptyManager = ctx.ptyManager;
+      const sessionId = String(msg.sessionId ?? '');
+      void (async () => {
+        const reject = (reason: string) =>
+          send({ type: 'sessionResumeRejected', sessionId, reason });
+        // Already open here: the office focuses that agent instead of a second
+        // CLI fighting over the same transcript.
+        if (runningAgentIdFor(store, sessionId) !== undefined) {
+          reject('This session is already open in the office.');
+          return;
+        }
+        // Where to run comes from the host's own index, never the client.
+        const entry = await findSessionInHistory(claudeProvider, sessionId);
+        if (!entry) {
+          reject('Session not found.');
+          return;
+        }
+        if (!fs.existsSync(entry.cwd)) {
+          reject(`Its directory no longer exists: ${entry.cwd}`);
+          return;
+        }
+        const id = launchStandaloneAgent(
+          { store, runtime, ptyManager, provider: claudeProvider },
+          {
+            directoryPath: entry.cwd,
+            bypassPermissions: adapter?.getSetting(KEY_BYPASS_PERMISSIONS, false) ?? false,
+            resume: { sessionId: entry.sessionId, transcriptPath: entry.transcriptPath },
+          },
+        );
+        if (id === null) reject('The terminal could not start.');
+      })();
+      break;
+    }
 
     default:
       // focusAgent is handled entirely client-side in standalone (it focuses the

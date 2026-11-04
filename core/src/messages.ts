@@ -43,6 +43,8 @@ export type ServerMessage =
   | DirectorySaved
   | DirectoryRejected
   | DirectorySuggestions
+  | SessionHistory
+  | SessionResumeRejected
   | TerminalAvailability
   | TerminalSessionOpened
   | TerminalSessionClosed
@@ -78,6 +80,8 @@ export type ClientMessage =
   | SaveDirectory
   | RemoveDirectory
   | RequestDirectorySuggestions
+  | RequestSessionHistory
+  | ResumeSession
   | RequestDiagnostics;
 
 export interface ProviderCapabilities {
@@ -357,6 +361,33 @@ export interface DirectorySuggestions {
   paths: string[];
 }
 
+export interface SessionHistory {
+  type: 'sessionHistory';
+  sessions: SessionHistoryEntry[];
+}
+
+export interface SessionHistoryEntry {
+  sessionId: string;
+  cwd: string;
+  title: string;
+  startedAt: string;
+  lastActiveAt: string;
+  promptCount: number;
+  model?: string;
+  costUSD?: number;
+  inputTokens: number;
+  outputTokens: number;
+  cacheCreationTokens: number;
+  cacheReadTokens: number;
+  runningAgentId?: number;
+}
+
+export interface SessionResumeRejected {
+  type: 'sessionResumeRejected';
+  sessionId: string;
+  reason: string;
+}
+
 export interface TerminalAvailability {
   type: 'terminalAvailability';
   available: boolean;
@@ -528,6 +559,15 @@ export interface RemoveDirectory {
 
 export interface RequestDirectorySuggestions {
   type: 'requestDirectorySuggestions';
+}
+
+export interface RequestSessionHistory {
+  type: 'requestSessionHistory';
+}
+
+export interface ResumeSession {
+  type: 'resumeSession';
+  sessionId: string;
 }
 
 export interface RequestDiagnostics {

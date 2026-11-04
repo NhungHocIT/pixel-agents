@@ -9,6 +9,7 @@ import { ConnectionIndicator } from './components/ConnectionIndicator.js';
 import { DebugView } from './components/DebugView.js';
 import { DirectoryModal } from './components/DirectoryModal.js';
 import { EditActionBar } from './components/EditActionBar.js';
+import { HistoryModal } from './components/HistoryModal.js';
 import { IntroBubble } from './components/IntroBubble.js';
 import { MigrationNotice } from './components/MigrationNotice.js';
 import { MusicVolume } from './components/MusicVolume.js';
@@ -147,6 +148,8 @@ function App() {
 
   const [isChangelogOpen, setIsChangelogOpen] = useState(false);
   const [isSettingsOpen, setIsSettingsOpen] = useState(false);
+  const [isHistoryOpen, setIsHistoryOpen] = useState(false);
+  const closeHistory = useCallback(() => setIsHistoryOpen(false), []);
   const [isHooksInfoOpen, setIsHooksInfoOpen] = useState(false);
   const [hooksTooltipDismissed, setHooksTooltipDismissed] = useState(false);
   const [isDebugMode, setIsDebugMode] = useState(false);
@@ -721,13 +724,15 @@ function App() {
           terminalAvailable={terminalAvailable}
           terminalUnavailableReason={terminalUnavailableReason}
           onOpenTerminal={() => handleOpenShell(OFFICE_SHELL_ID)}
+          isHistoryOpen={isHistoryOpen}
+          onToggleHistory={() => setIsHistoryOpen((v) => !v)}
         />
       )}
 
       {/* Mobile: Settings floats top-left (the layout editor stays desktop-
             only — its tools are drag/hover-driven). */}
       {isMobile && !isDebugMode && !officeReadOnly && (
-        <div className="absolute mobile-safe-top left-8 z-20">
+        <div className="absolute mobile-safe-top left-8 z-20 flex gap-4">
           <Button
             size="sm"
             variant={isSettingsOpen ? 'active' : 'default'}
@@ -735,6 +740,14 @@ function App() {
             onClick={() => setIsSettingsOpen((v) => !v)}
           >
             Settings
+          </Button>
+          <Button
+            size="sm"
+            variant={isHistoryOpen ? 'active' : 'default'}
+            className="border-border! shadow-pixel"
+            onClick={() => setIsHistoryOpen((v) => !v)}
+          >
+            History
           </Button>
         </div>
       )}
@@ -913,6 +926,13 @@ function App() {
         isOpen={isChangelogOpen}
         onClose={() => setIsChangelogOpen(false)}
         currentVersion={extensionVersion}
+      />
+
+      <HistoryModal
+        isOpen={isHistoryOpen && !officeReadOnly}
+        onClose={closeHistory}
+        canResume={isBrowserRuntime && terminalAvailable}
+        onShowAgent={handleClick}
       />
 
       <SettingsModal

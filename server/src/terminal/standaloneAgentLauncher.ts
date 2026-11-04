@@ -44,6 +44,9 @@ export interface LaunchStandaloneAgentOptions {
   bypassPermissions?: boolean;
   cols?: number;
   rows?: number;
+  /** Pick up an existing session (History tab): its id and transcript. The
+   *  caller resolves both from the server's own session index. */
+  resume?: { sessionId: string; transcriptPath: string };
 }
 
 /**
@@ -62,10 +65,11 @@ export function launchStandaloneAgent(
   }
 
   const cwd = options.directoryPath ?? process.cwd();
-  const sessionId = crypto.randomUUID();
+  const sessionId = options.resume?.sessionId ?? crypto.randomUUID();
 
   const launch = provider.buildLaunchCommand?.(sessionId, cwd, {
     bypassPermissions: options.bypassPermissions,
+    resume: options.resume !== undefined,
   });
   if (!launch) {
     console.error('[Pixel Agents] Terminal: provider.buildLaunchCommand is not implemented');
@@ -77,7 +81,8 @@ export function launchStandaloneAgent(
     console.error('[Pixel Agents] Terminal: provider returned no session dirs');
     return null;
   }
-  const projectDir = dirs[0];
+  // A resumed session keeps writing to the transcript it already has.
+  const projectDir = options.resume ? path.dirname(options.resume.transcriptPath) : dirs[0];
 
   const id = store.nextAgentId.current++;
 
@@ -101,7 +106,8 @@ export function launchStandaloneAgent(
 
   // Pre-register the expected JSONL so the project scanner doesn't mistake it
   // for a /clear file, exactly as the VS Code path does.
-  const expectedFile = path.join(projectDir, `${sessionId}.jsonl`);
+  const expectedFile =
+    options.resume?.transcriptPath ?? path.join(projectDir, `${sessionId}.jsonl`);
   runtime.knownJsonlFiles.add(expectedFile);
 
   const agent = createAgentState({
@@ -122,6 +128,15 @@ export function launchStandaloneAgent(
     directoryName: directoryNameForLaunch(cwd, [hostDirectory()]) ?? directoryNameFor(cwd),
     providerId: provider.id,
   });
+  if (options.resume) {
+    // Watch only what the resumed run appends: replaying the old transcript
+    // would re-animate every tool the session ever ran.
+    try {
+      agent.fileOffset = fs.statSync(expectedFile).size;
+    } catch {
+      /* transcript gone: read it from the start once it reappears */
+    }
+  }
 
   // Server-side, like every other creation path: the palette rides the
   // agentCreated broadcast and is persisted with the agent, so a reload
