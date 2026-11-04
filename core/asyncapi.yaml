@@ -121,6 +121,9 @@ components:
         - $ref: '#/components/schemas/DirectorySaved'
         - $ref: '#/components/schemas/DirectoryRejected'
         - $ref: '#/components/schemas/DirectorySuggestions'
+        # Session History
+        - $ref: '#/components/schemas/SessionHistory'
+        - $ref: '#/components/schemas/SessionResumeRejected'
         # Terminal (standalone embedded terminal control plane)
         - $ref: '#/components/schemas/TerminalAvailability'
         - $ref: '#/components/schemas/TerminalSessionOpened'
@@ -160,6 +163,8 @@ components:
         - $ref: '#/components/schemas/SaveDirectory'
         - $ref: '#/components/schemas/RemoveDirectory'
         - $ref: '#/components/schemas/RequestDirectorySuggestions'
+        - $ref: '#/components/schemas/RequestSessionHistory'
+        - $ref: '#/components/schemas/ResumeSession'
         - $ref: '#/components/schemas/RequestDiagnostics'
       discriminator: type
 
@@ -888,6 +893,85 @@ components:
           items:
             type: string
 
+    SessionHistory:
+      description: |
+        Every past coding-agent session on the host, most recently active first,
+        with the tokens it spent (sub-agents included). Sent point-to-point in
+        reply to `requestSessionHistory`. Read from the session transcripts.
+      type: object
+      additionalProperties: false
+      required: [type, sessions]
+      properties:
+        type:
+          const: sessionHistory
+        sessions:
+          type: array
+          items:
+            $ref: '#/components/schemas/SessionHistoryEntry'
+
+    SessionHistoryEntry:
+      type: object
+      additionalProperties: false
+      required:
+        [
+          sessionId,
+          cwd,
+          title,
+          startedAt,
+          lastActiveAt,
+          promptCount,
+          inputTokens,
+          outputTokens,
+          cacheCreationTokens,
+          cacheReadTokens,
+        ]
+      properties:
+        sessionId:
+          type: string
+        cwd:
+          type: string
+          description: Working directory the session ran in.
+        title:
+          type: string
+          description: Custom title, else the AI title, else the first prompt.
+        startedAt:
+          type: string
+          description: ISO timestamp.
+        lastActiveAt:
+          type: string
+          description: ISO timestamp of the transcript's last write.
+        promptCount:
+          type: integer
+        model:
+          type: string
+        costUSD:
+          type: number
+          description: The CLI's own cost snapshots, summed; absent on old transcripts.
+        inputTokens:
+          type: integer
+        outputTokens:
+          type: integer
+        cacheCreationTokens:
+          type: integer
+        cacheReadTokens:
+          type: integer
+        runningAgentId:
+          type: integer
+          description: Set when an agent in this office is running this session right now.
+
+    SessionResumeRejected:
+      description: A `resumeSession` could not be carried out (reply to the sender only).
+      type: object
+      additionalProperties: false
+      required: [type, sessionId, reason]
+      properties:
+        type:
+          const: sessionResumeRejected
+        sessionId:
+          type: string
+        reason:
+          type: string
+
     AgentDiagnostics:
       description: Connection diagnostics for all agents (response to requestDiagnostics).
       type: object
@@ -1340,6 +1424,28 @@ components:
       properties:
         type:
           const: requestDirectorySuggestions
+
+    RequestSessionHistory:
+      description: Ask for the History tab's session list; replied with `sessionHistory`.
+      type: object
+      additionalProperties: false
+      required: [type]
+      properties:
+        type:
+          const: requestSessionHistory
+
+    ResumeSession:
+      description: >-
+        Continue a past session in a new terminal (`claude --resume <id>`), in the
+        working directory the host recorded for it. Standalone only.
+      type: object
+      additionalProperties: false
+      required: [type, sessionId]
+      properties:
+        type:
+          const: resumeSession
+        sessionId:
+          type: string
 
     SetShowAreas:
       description: Toggle the Areas overlay (translucent rendering on top of the office).

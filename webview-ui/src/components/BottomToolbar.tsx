@@ -22,6 +22,8 @@ interface BottomToolbarProps {
   terminalUnavailableReason: string | null;
   /** Show the office's own cmd (standalone with a terminal only). */
   onOpenTerminal?: () => void;
+  isHistoryOpen: boolean;
+  onToggleHistory: () => void;
 }
 
 export function BottomToolbar({
@@ -35,13 +37,15 @@ export function BottomToolbar({
   terminalAvailable,
   terminalUnavailableReason,
   onOpenTerminal,
+  isHistoryOpen,
+  onToggleHistory,
 }: BottomToolbarProps) {
   const [isDrawerOpen, setIsDrawerOpen] = useState(false);
   const launchRef = useRef<HTMLDivElement>(null);
   // Folded to one small button so the toolbar doesn't cover the office. Kept
   // open while Layout or Settings is on, so the button that turns it off stays.
   const [isExpanded, setIsExpanded] = useState(false);
-  const showButtons = isExpanded || isEditMode || isSettingsOpen;
+  const showButtons = isExpanded || isEditMode || isSettingsOpen || isHistoryOpen;
 
   // Close the launch drawer on outside press (the dropdown convention here).
   useEffect(() => {
@@ -133,6 +137,14 @@ export function BottomToolbar({
       )}
       {showButtons && (
         <>
+          <Button
+            variant={isHistoryOpen ? 'active' : 'default'}
+            onClick={onToggleHistory}
+            title="Past sessions: resume one, see its tokens"
+            data-testid="history-button"
+          >
+            History
+          </Button>
           <Button
             variant={isEditMode ? 'active' : 'default'}
             onClick={onToggleEditMode}

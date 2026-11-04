@@ -61,6 +61,12 @@ export const DIRECTORY_SUGGESTION_FILES_PER_SESSION_DIR = 5;
  *  by when a session last ran there. */
 export const DIRECTORY_SUGGESTION_LIMIT = 10;
 
+// ── Session History ─────────────────────────────────────────
+/** Most sessions the History tab lists (newest first). */
+export const SESSION_HISTORY_LIMIT = 500;
+/** A session title (custom, AI-generated or first prompt) is clipped to this. */
+export const SESSION_HISTORY_TITLE_MAX = 120;
+
 // ── Display Truncation + Pixel Agents Server paths ──────────
 // Centralized in core/src/constants.ts; re-exported here for back-compat.
 export {
