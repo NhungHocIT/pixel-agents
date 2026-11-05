@@ -1,6 +1,7 @@
 import { WALK_FRAME_DURATION_SEC, WALK_SPEED_PX_PER_SEC } from '../../constants.js';
 import type { Character } from '../types.js';
 import { CharacterState, Direction, TILE_SIZE } from '../types.js';
+import { mayStep } from './traffic.js';
 
 /** Walk one frame along `ch.path` for characters scripted outside the normal
  *  FSM (the exercise line, the waiter). Once the path runs out the character
@@ -10,6 +11,11 @@ export function stepWalk(ch: Character, dt: number, faceOnArrival: Direction): v
   if (ch.frameTimer >= WALK_FRAME_DURATION_SEC) {
     ch.frameTimer -= WALK_FRAME_DURATION_SEC;
     ch.frame = (ch.frame + 1) % 4;
+  }
+  // Someone in the way: hold until they move (or the gate routes round them)
+  if (ch.moveProgress === 0 && ch.path.length > 0 && !mayStep(ch, dt, true)) {
+    ch.frame = 0;
+    return;
   }
   const next = ch.path[0];
   if (!next) {

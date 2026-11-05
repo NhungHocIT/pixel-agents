@@ -259,6 +259,10 @@ export interface Character {
   /** Storyline: seconds left on a heart bubble, and until the next one may show. */
   heartTimer?: number;
   heartCooldown?: number;
+  /** Traffic: seconds held up behind someone on the current step, and how many
+   *  ways round were tried meanwhile. */
+  trafficWait?: number;
+  trafficTries?: number;
   /** Active speech bubble type, or null if none showing */
   bubbleType: 'permission' | 'waiting' | null;
   /** Only meaningful while bubbleType === 'waiting': true when the agent went

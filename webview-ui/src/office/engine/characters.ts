@@ -24,6 +24,7 @@ import { isReadingToolName } from '../toolUtils.js';
 import type { Character, Seat, SpriteData, TileType as TileTypeVal } from '../types.js';
 import { CharacterState, Direction, TILE_SIZE } from '../types.js';
 import { exerciseMove } from './exercise.js';
+import { mayStep } from './traffic.js';
 
 /** Whether a tool should show the reading animation (vs typing). Taxonomy comes
  *  from the active HookProvider via the `providerCapabilities` message. */
@@ -332,6 +333,13 @@ export function updateCharacter(
         ch.frameTimer = 0;
         break;
       }
+
+      // Someone in the way: hold (or the gate re-routes / ends the walk here)
+      if (ch.moveProgress === 0 && !mayStep(ch, dt, false)) {
+        ch.frame = 0;
+        break;
+      }
+      if (ch.path.length === 0) break; // walk ended short: arrive next frame
 
       // Move toward next tile in path
       const nextTile = ch.path[0];

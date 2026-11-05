@@ -30,6 +30,7 @@ import {
   SPEECH_LIFT_PX,
   SPEECH_MAX_WIDTH_PX,
   SPEECH_TEXT_COLOR,
+  STORY_HEART_SHOW_SEC,
   TEAM_LEAD_COLOR,
   TEAM_ROLE_COLOR,
   TOOL_OVERLAY_VERTICAL_OFFSET,
@@ -112,6 +113,16 @@ function getFuelColor(ratio: number): string {
   if (ratio >= CONTEXT_DANGER_THRESHOLD) return CONTEXT_GAUGE_COLOR_DANGER;
   if (ratio >= CONTEXT_WARN_THRESHOLD) return CONTEXT_GAUGE_COLOR_WARN;
   return CONTEXT_GAUGE_COLOR_OK;
+}
+
+/** A couple's heart fades in as it appears and out as it ends. */
+function heartOpacity(ch: { heartTimer?: number }): number {
+  const left = ch.heartTimer ?? 0;
+  const shown = STORY_HEART_SHOW_SEC - left;
+  return Math.max(
+    0,
+    Math.min(1, left / BUBBLE_FADE_DURATION_SEC, shown / BUBBLE_FADE_DURATION_SEC),
+  );
 }
 
 /** A speech-bubble sprite blitted into a DOM canvas. Bubbles live in the DOM
@@ -489,7 +500,7 @@ export function ToolOverlay({
                   left,
                   top: heartBase - PATRON_HEART_LIFT_PX - heart.height / dpr,
                   zIndex: OVERLAY_BUBBLE_Z_INDEX,
-                  opacity: Math.min(1, (p.heartTimer ?? 0) / BUBBLE_FADE_DURATION_SEC),
+                  opacity: heartOpacity(p),
                 }}
               >
                 <OverlayBubble cached={heart} dpr={dpr} />
@@ -499,31 +510,53 @@ export function ToolOverlay({
         );
       })}
       {[...officeState.characters.values()].map((ch) => {
-        if (!ch.speech) return null;
+        const agentHeart =
+          (ch.heartTimer ?? 0) > 0 && !ch.bubbleType
+            ? getCachedSprite(BUBBLE_HEART_SPRITE, zoom)
+            : null;
+        if (!ch.speech && !agentHeart) return null;
         // Agents chat too: the line floats where a patron's would, over the head
-        const top =
+        const nameTop =
           project.toScreenY(ch.y + characterDrawOffsetPx(ch) - TOOL_OVERLAY_VERTICAL_OFFSET) +
-          PATRON_NAME_TAG_LIFT_PX -
-          SPEECH_LIFT_PX;
+          PATRON_NAME_TAG_LIFT_PX;
+        const top = nameTop - SPEECH_LIFT_PX;
+        const heartBase = ch.speech ? top - SPEECH_HEART_CLEARANCE_PX : nameTop;
         return (
-          <span
-            key={`speech-${ch.id}`}
-            className="absolute -translate-x-1/2 -translate-y-full pointer-events-none leading-tight text-center px-3 py-1"
-            style={{
-              left: project.toScreenX(ch.x),
-              top,
-              width: 'max-content',
-              maxWidth: SPEECH_MAX_WIDTH_PX,
-              fontSize: SPEECH_FONT_PX,
-              color: SPEECH_TEXT_COLOR,
-              background: SPEECH_BG_COLOR,
-              border: `2px solid ${SPEECH_TEXT_COLOR}`,
-              borderRadius: 6,
-              zIndex: OVERLAY_BUBBLE_Z_INDEX,
-            }}
-          >
-            {ch.speech}
-          </span>
+          <Fragment key={`speech-${ch.id}`}>
+            {agentHeart && (
+              // Storyline couple close together: the agent shows the heart too
+              <div
+                className="absolute -translate-x-1/2 pointer-events-none"
+                style={{
+                  left: project.toScreenX(ch.x),
+                  top: heartBase - PATRON_HEART_LIFT_PX - agentHeart.height / dpr,
+                  zIndex: OVERLAY_BUBBLE_Z_INDEX,
+                  opacity: heartOpacity(ch),
+                }}
+              >
+                <OverlayBubble cached={agentHeart} dpr={dpr} />
+              </div>
+            )}
+            {ch.speech && (
+              <span
+                className="absolute -translate-x-1/2 -translate-y-full pointer-events-none leading-tight text-center px-3 py-1"
+                style={{
+                  left: project.toScreenX(ch.x),
+                  top,
+                  width: 'max-content',
+                  maxWidth: SPEECH_MAX_WIDTH_PX,
+                  fontSize: SPEECH_FONT_PX,
+                  color: SPEECH_TEXT_COLOR,
+                  background: SPEECH_BG_COLOR,
+                  border: `2px solid ${SPEECH_TEXT_COLOR}`,
+                  borderRadius: 6,
+                  zIndex: OVERLAY_BUBBLE_Z_INDEX,
+                }}
+              >
+                {ch.speech}
+              </span>
+            )}
+          </Fragment>
         );
       })}
     </>

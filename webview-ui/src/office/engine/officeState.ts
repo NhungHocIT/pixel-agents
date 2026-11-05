@@ -4,6 +4,7 @@ import {
   AUTO_ON_FACING_DEPTH,
   AUTO_ON_SIDE_DEPTH,
   BAR_PATRONS_ENABLED,
+  BAR_STORY,
   BED_FURNITURE_TYPE,
   BYE_LINGER_SEC,
   CHARACTER_HIT_HALF_WIDTH,
@@ -138,6 +139,15 @@ import {
   updatePickleball,
 } from './pickleball.js';
 import { anchorTile, closestFreeSeat } from './seatPlacement.js';
+import type { TrafficGate } from './traffic.js';
+import {
+  blockerOf,
+  heldBy,
+  setTrafficGate,
+  TRAFFIC_DETOUR_AFTER_SEC,
+  TRAFFIC_GIVE_UP_SEC,
+  TRAFFIC_PASS_THROUGH_SEC,
+} from './traffic.js';
 import type { WaiterRound } from './waiter.js';
 import { isServable, isWaitingOnOrder, newWaiterRound, serveSpots, workInPlace } from './waiter.js';
 import { startWalk, stepWalk } from './walking.js';
@@ -545,6 +555,108 @@ export class OfficeState {
       this.ownerVisitTimer = randomBetween(OWNER_VISIT_MIN_SEC, OWNER_VISIT_MAX_SEC);
     }
     p.wanderAnchor = target ? { col: target.tileCol, row: target.tileRow } : null;
+  }
+
+  /** Everyone on the floor who takes up a tile (cached for the frame; the
+   *  entries are live, so positions are always current). */
+  private trafficMovers(): Character[] {
+    this.trafficCache ??= [
+      ...[...this.characters.values()].filter((ch) => !ch.matrixEffect),
+      ...this.getVisiblePatrons().filter((p) => !p.matrixEffect),
+      ...(this.greeter && !this.greeter.matrixEffect ? [this.greeter] : []),
+    ];
+    return this.trafficCache;
+  }
+
+  private trafficCache: Character[] | null = null;
+
+  /** The traffic rule (see traffic.ts): wait behind whoever holds the next
+   *  tile; after a moment look for a way round; a free roam whose last tile is
+   *  taken stops short; a jam nobody can get out of is walked through. */
+  private readonly trafficGate: TrafficGate = (ch, dt, scripted) => {
+    const next = ch.path[0];
+    if (!next || ch.matrixEffect) return true;
+    const movers = this.trafficMovers();
+    const blocker = blockerOf(ch, next, movers);
+    if (!blocker) {
+      ch.trafficWait = 0;
+      ch.trafficTries = 0;
+      return true;
+    }
+    const wait = (ch.trafficWait ?? 0) + dt;
+    ch.trafficWait = wait;
+    const clear = () => {
+      ch.trafficWait = 0;
+      ch.trafficTries = 0;
+    };
+    const goal = ch.path[ch.path.length - 1];
+    const blockerStays = !(blocker.state === CharacterState.WALK && blocker.path.length > 0);
+    // Somebody is standing on the spot it was wandering to: stop here instead
+    if (ch.path.length === 1 && blockerStays && !scripted && wait >= TRAFFIC_GIVE_UP_SEC) {
+      ch.path = [];
+      clear();
+      return true;
+    }
+    // Look for a way round everyone (the goal itself left open)
+    const tries = ch.trafficTries ?? 0;
+    if (wait >= TRAFFIC_DETOUR_AFTER_SEC * (tries + 1)) {
+      ch.trafficTries = tries + 1;
+      const held = heldBy(ch, movers);
+      held.delete(`${goal.col},${goal.row}`);
+      const blocked = new Set([...this.blockedTiles, ...held]);
+      const path = findPath(ch.tileCol, ch.tileRow, goal.col, goal.row, this.tileMap, blocked);
+      if (path.length > 0 && path.length <= ch.path.length + 8) {
+        ch.path = path;
+        clear();
+        return true;
+      }
+    }
+    // Stuck for good (head-on in a corridor): go through rather than freeze
+    if (wait >= TRAFFIC_PASS_THROUGH_SEC) {
+      clear();
+      return true;
+    }
+    return false;
+  };
+
+  /** Standing on someone else's tile (spawned there, or pushed through a jam):
+   *  the later of the two steps off to a free tile beside it. */
+  private unstack(ch: Character): void {
+    // Standing about, or working on the spot with no desk (typing in place)
+    const loose =
+      ch.state === CharacterState.IDLE || (ch.state === CharacterState.TYPE && !ch.seatId);
+    if (!loose || ch.path.length > 0 || ch.matrixEffect) return;
+    const movers = this.trafficMovers();
+    const mine = movers.indexOf(ch);
+    const shared = movers.some(
+      (o, i) =>
+        o !== ch &&
+        o.tileCol === ch.tileCol &&
+        o.tileRow === ch.tileRow &&
+        !(o.state === CharacterState.WALK && o.path.length > 0) && // not already stepping off
+        (o.state !== CharacterState.IDLE || i < mine),
+    );
+    if (!shared) return;
+    const held = heldBy(ch, movers);
+    const steps = [
+      [0, 1],
+      [1, 0],
+      [-1, 0],
+      [0, -1],
+    ].sort(() => Math.random() - 0.5);
+    for (const [dc, dr] of steps) {
+      const col = ch.tileCol + dc;
+      const row = ch.tileRow + dr;
+      if (held.has(`${col},${row}`) || !isWalkable(col, row, this.tileMap, this.blockedTiles)) {
+        continue;
+      }
+      ch.path = [{ col, row }];
+      ch.moveProgress = 0;
+      ch.state = CharacterState.WALK;
+      ch.frame = 0;
+      ch.frameTimer = 0;
+      return;
+    }
   }
 
   private isWaiter(ch: Character): boolean {
@@ -1363,6 +1475,9 @@ export class OfficeState {
     for (const chat of this.chats) {
       if (chat.place !== 'street') continue;
       const [a, b] = chat.speakers;
+      // Too close (on top of each other): keep walking and talk on the move,
+      // or they would freeze stacked on one spot
+      if (Math.hypot(a.x - b.x, a.y - b.y) < TILE_SIZE) continue;
       if (a.state === CharacterState.WALK) held.set(a, b);
       if (b.state === CharacterState.WALK) held.set(b, a);
     }
@@ -1397,8 +1512,8 @@ export class OfficeState {
       Math.floor(Math.random() * (STORY_WANDERER_DETOURS_MAX - STORY_WANDERER_DETOURS_MIN + 1));
   }
 
-  /** Storyline extras for one patron each frame: follow, sync, hearts, wrong turns. */
-  private updateStory(p: Character, dt: number, wasActive: boolean): void {
+  /** Storyline extras for one patron each frame: follow, sync, wrong turns (hearts: tickCoupleHearts). */
+  private updateStory(p: Character, wasActive: boolean): void {
     const ties = storyTiesOf(characterNameOf(p));
 
     // Followers wander near their leader
@@ -1413,22 +1528,33 @@ export class OfficeState {
         mate.patronTimer = Math.min(mate.patronTimer ?? 0, STORY_SYNC_DELAY_SEC);
       }
     }
+  }
 
-    // Couples close together show a heart now and then
-    p.heartTimer = Math.max(0, (p.heartTimer ?? 0) - dt);
-    p.heartCooldown = Math.max(0, (p.heartCooldown ?? 0) - dt);
-    const partner = this.characterNamed(ties.partner);
-    if (
-      partner &&
-      p.heartCooldown === 0 &&
-      Math.abs(partner.tileCol - p.tileCol) + Math.abs(partner.tileRow - p.tileRow) <=
-        STORY_HEART_RANGE_TILES
-    ) {
-      p.heartTimer = STORY_HEART_SHOW_SEC;
-      p.heartCooldown =
+  /** Seconds until each couple (by index in BAR_STORY.couples) may show hearts again. */
+  private coupleHeartCooldown: number[] = [];
+
+  /** Couples close together, in the same room, show a heart now and then —
+   *  both of them at once, whether agent or patron. */
+  private tickCoupleHearts(dt: number): void {
+    const everyone = [...this.characters.values(), ...this.patrons];
+    for (const ch of everyone) ch.heartTimer = Math.max(0, (ch.heartTimer ?? 0) - dt);
+    BAR_STORY.couples.forEach(([nameA, nameB], i) => {
+      const cooldown = Math.max(0, (this.coupleHeartCooldown[i] ?? 0) - dt);
+      this.coupleHeartCooldown[i] = cooldown;
+      if (cooldown > 0) return;
+      const a = this.characterNamed(nameA);
+      const b = this.characterNamed(nameB);
+      if (!a || !b || a.matrixEffect || b.matrixEffect) return;
+      const range = Math.abs(a.tileCol - b.tileCol) + Math.abs(a.tileRow - b.tileRow);
+      const roomA = this.roomOf[a.tileRow]?.[a.tileCol] ?? -1;
+      const roomB = this.roomOf[b.tileRow]?.[b.tileCol] ?? -1;
+      if (range > STORY_HEART_RANGE_TILES || roomA !== roomB) return;
+      a.heartTimer = STORY_HEART_SHOW_SEC;
+      b.heartTimer = STORY_HEART_SHOW_SEC;
+      this.coupleHeartCooldown[i] =
         STORY_HEART_COOLDOWN_MIN_SEC +
         Math.random() * (STORY_HEART_COOLDOWN_MAX_SEC - STORY_HEART_COOLDOWN_MIN_SEC);
-    }
+    });
   }
 
   /** Keep one patron per loaded character sprite (the count grows once PNGs load). */
@@ -1466,9 +1592,10 @@ export class OfficeState {
     const wasActive = p.isActive;
     tickPatronSchedule(p, dt, () => this.pickPatronSeat(p));
     if (!p.isActive) p.saidBye = false;
-    this.updateStory(p, dt, wasActive);
+    this.updateStory(p, wasActive);
     if (this.isUserAvatar(p)) this.steerOwnerRounds(p, dt);
     this.updateRestAssignment(p);
+    this.unstack(p);
     this.withOwnRestSpotUnblocked(p, () =>
       this.withOwnSeatUnblocked(p, () =>
         updateCharacter(p, dt, this.wanderTiles(), this.seats, this.tileMap, this.blockedTiles),
@@ -2575,6 +2702,9 @@ export class OfficeState {
 
   update(dt: number): void {
     this.clockSec += dt;
+    // Walkers ask this office who is in the way (see traffic.ts)
+    setTrafficGate(this.trafficGate);
+    this.trafficCache = null;
     // Furniture animation cycling
     const prevFrame = Math.floor(this.furnitureAnimTimer / FURNITURE_ANIM_INTERVAL_SEC);
     this.furnitureAnimTimer += dt;
@@ -2590,6 +2720,7 @@ export class OfficeState {
     }
 
     this.tickDay();
+    this.tickCoupleHearts(dt);
     if (!this.exercise && !this.lunch && Date.now() >= this.nextExerciseAt) this.startExercise();
     const inLine = new Set(this.exercise?.members);
     const atLunch = this.lunch?.seats ?? new Map<Character, Seat | null>();
@@ -2622,6 +2753,7 @@ export class OfficeState {
           if (byeSec > 0) ch.seatTimer = Math.max(ch.seatTimer, byeSec);
         }
         this.updateRestAssignment(ch);
+        this.unstack(ch);
 
         // Temporarily unblock own seat (and rest spot) so character can pathfind to it
         this.withOwnRestSpotUnblocked(ch, () =>
