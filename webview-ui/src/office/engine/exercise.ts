@@ -146,6 +146,52 @@ export function pickCourtColumns(
   court: { col: number; row: number; w: number; h: number },
   walkableTiles: Array<{ col: number; row: number }>,
 ): { slots: ExerciseSlot[]; coach: { col: number; row: number } } | null {
+  return (
+    pickInsideCourt(count, court, walkableTiles) ?? pickCourtLines(count, court, walkableTiles)
+  );
+}
+
+/** Everyone inside the court lines: each half (minus the tile beside the net)
+ *  takes half the crowd, mirrored across the net. A tile apart, checkerboard
+ *  style, while that fits; otherwise every tile of the half. Front rows (nearest
+ *  the coach) and the tiles nearest the net fill first. The coach stands just
+ *  below the court, under the net. Null when the court can't hold everyone. */
+function pickInsideCourt(
+  count: number,
+  court: { col: number; row: number; w: number; h: number },
+  walkableTiles: Array<{ col: number; row: number }>,
+): { slots: ExerciseSlot[]; coach: { col: number; row: number } } | null {
+  const walkable = new Set(walkableTiles.map((t) => `${t.col},${t.row}`));
+  const open = (col: number, row: number) => walkable.has(`${col},${row}`);
+  const netLeft = court.col + Math.floor(court.w / 2) - 1;
+  const mirror = (col: number) => 2 * netLeft + 1 - col;
+  const top = court.row;
+  const bottom = court.row + court.h - 1;
+  const coachRow = [bottom + 1, bottom + 2].find((r) => open(netLeft, r));
+  if (coachRow === undefined) return null;
+  // Left-half tiles (with their mirror open too), front row first, nearest the net first
+  const half: Array<{ col: number; row: number }> = [];
+  for (let row = bottom; row >= top; row--) {
+    for (let col = netLeft - 1; col >= court.col; col--) {
+      if (open(col, row) && open(mirror(col), row)) half.push({ col, row });
+    }
+  }
+  const perSide = Math.ceil(count / 2);
+  if (half.length < perSide) return null;
+  const parity = (netLeft - 1 + bottom) % 2;
+  const spaced = half.filter((t) => (t.col + t.row) % 2 === parity);
+  const left = (spaced.length >= perSide ? spaced : half).slice(0, perSide);
+  const right = left.slice(0, count - perSide).map((t) => ({ col: mirror(t.col), row: t.row }));
+  return { slots: [...left, ...right], coach: { col: netLeft, row: coachRow } };
+}
+
+/** The court is too small: two lines down the screen through it (may run off
+ *  the court above and below). */
+function pickCourtLines(
+  count: number,
+  court: { col: number; row: number; w: number; h: number },
+  walkableTiles: Array<{ col: number; row: number }>,
+): { slots: ExerciseSlot[]; coach: { col: number; row: number } } | null {
   const walkable = new Set(walkableTiles.map((t) => `${t.col},${t.row}`));
   const open = (col: number, row: number) => walkable.has(`${col},${row}`);
   const mid = court.row + Math.floor(court.h / 2);
@@ -212,16 +258,24 @@ export function joinExercise(
   path: Array<{ col: number; row: number }>,
   facing: Direction = Direction.DOWN,
   shift: { x?: number; y?: number } = {},
+  spot?: { col: number; row: number },
 ): void {
   startWalk(ch, path, facing);
+  ch.exerciseSpot = spot;
   ch.exerciseFacing = facing;
   ch.exerciseShift = { x: shift.x ?? 0, y: shift.y ?? 0 };
   ch.lostDetours = 0;
   ch.exerciseTimer = 0;
 }
 
-/** The line has formed (or the wait ran out): everyone starts where they stand. */
+/** The line has formed (or the wait ran out): everyone starts on their own
+ *  spot — a straggler (or one with no way there) is put there directly, so
+ *  nobody works out off the court. */
 export function beginWorkout(ch: Character): void {
+  if (ch.exerciseSpot) {
+    ch.tileCol = ch.exerciseSpot.col;
+    ch.tileRow = ch.exerciseSpot.row;
+  }
   snapToTile(ch);
   ch.x += ch.exerciseShift?.x ?? 0;
   ch.y += ch.exerciseShift?.y ?? 0;
@@ -243,6 +297,7 @@ export function endWorkout(ch: Character): void {
   ch.exerciseTimer = undefined;
   ch.exerciseFacing = undefined;
   ch.exerciseShift = undefined;
+  ch.exerciseSpot = undefined;
   ch.seatTimer = 0;
   ch.wanderTimer = Math.random() * WANDER_PAUSE_MIN_SEC;
 }

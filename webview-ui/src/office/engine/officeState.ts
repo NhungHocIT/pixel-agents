@@ -2392,7 +2392,7 @@ export class OfficeState {
             this.blockedTiles,
           )
         : [];
-      joinExercise(coach, path, front?.facing);
+      joinExercise(coach, path, front?.facing, {}, front ?? undefined);
     }
     // Left-to-right into left-to-right slots, so paths cross as little as possible
     const slots = lineSlots.sort((a, b) => a.col - b.col || a.row - b.row);
@@ -2402,7 +2402,7 @@ export class OfficeState {
       const path = slot
         ? findPath(ch.tileCol, ch.tileRow, slot.col, slot.row, this.tileMap, this.blockedTiles)
         : [];
-      joinExercise(ch, path, Direction.DOWN, { x: slot?.shiftX, y: slot?.shiftY });
+      joinExercise(ch, path, Direction.DOWN, { x: slot?.shiftX, y: slot?.shiftY }, slot);
     });
     if (coach) members.push(coach);
     this.exercise = { phase: 'gather', timer: 0, members, coach, chatTimer: 0 };

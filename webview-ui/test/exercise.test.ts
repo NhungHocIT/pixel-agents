@@ -37,31 +37,39 @@ test('line slots sit one tile apart in a single row when the room is wide enough
 const courtRoom = floor(10, 14);
 const court = { col: 1, row: 4, w: 8, h: 4 };
 
-test('on the court: two staggered lines down the screen, clear of the net', () => {
-  const { slots, coach } = pickCourtColumns(8, court, courtRoom)!;
-  assert.equal(slots.length, 8);
-  const cols = [...new Set(slots.map((s) => s.col))].sort((a, b) => a - b);
-  assert.deepEqual(cols, [3, 6], 'one line each side, the tile beside the net left free');
-  const left = slots.filter((s) => s.col === 3).map((s) => s.row);
-  const right = slots.filter((s) => s.col === 6).map((s) => s.row);
-  for (let i = 1; i < left.length; i++) assert.equal(left[i] - left[i - 1], 2, 'a tile apart');
-  for (const row of right)
-    assert.ok(left.includes(row - 1) || left.includes(row + 1), 'level with a gap');
-  assert.ok(slots.every((s) => !s.shiftX && !s.shiftY));
-  // The coach below both lines, under the net
-  assert.equal(coach.col, 4);
-  assert.ok(slots.every((s) => s.row <= coach.row - 2));
+const inCourt = (s: { col: number; row: number }) =>
+  s.col >= court.col &&
+  s.col < court.col + court.w &&
+  s.row >= court.row &&
+  s.row < court.row + court.h;
+
+test('on the court: everyone inside it, in staggered columns either side of the net', () => {
+  const { slots, coach } = pickCourtColumns(10, court, courtRoom)!;
+  assert.equal(slots.length, 10);
+  assert.ok(slots.every(inCourt), 'nobody off the court');
+  assert.ok(
+    slots.every((s) => s.col !== 4 && s.col !== 5),
+    'the tiles beside the net left free',
+  );
+  assert.equal(new Set(slots.map((s) => s.col * 100 + s.row)).size, 10, 'no tile used twice');
+  // Staggered: nobody right beside or right behind anyone else
+  for (const a of slots)
+    for (const b of slots)
+      if (a !== b)
+        assert.ok(Math.abs(a.col - b.col) + Math.abs(a.row - b.row) >= 2, 'a tile apart');
+  // Mirrored across the net, five a side
+  const left = slots.filter((s) => s.col <= 4);
+  assert.equal(left.length, 5);
+  for (const l of left) assert.ok(slots.some((r) => r.col === 9 - l.col && r.row === l.row));
+  // The coach just below the court, under the net
+  assert.deepEqual(coach, { col: 4, row: 8 });
 });
 
-test('on the court, a crowd: one behind another, the right line half a tile lower', () => {
+test('on the court, a crowd: still all inside it, every tile of each half', () => {
   const { slots } = pickCourtColumns(20, court, courtRoom)!;
   assert.equal(slots.length, 20);
-  assert.deepEqual(
-    [...new Set(slots.map((s) => s.col))].sort((a, b) => a - b),
-    [3, 6],
-  );
-  assert.ok(slots.filter((s) => s.col === 6).every((s) => s.shiftY === 8));
-  assert.equal(new Set(slots.map((s) => `${s.col},${s.row}`)).size, 20, 'no tile used twice');
+  assert.ok(slots.every(inCourt));
+  assert.equal(new Set(slots.map((s) => s.col * 100 + s.row)).size, 20, 'no tile used twice');
 });
 
 test('a crowd too big for one row overflows into further rows, no tile used twice', () => {

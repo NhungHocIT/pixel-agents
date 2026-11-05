@@ -250,6 +250,8 @@ export interface Character {
   saidBye?: boolean;
   /** Exercise break: px off the tile centre (a packed line stands in the gaps of the next). */
   exerciseShift?: { x: number; y: number };
+  /** The tile this character was given in the exercise line; it starts the workout there. */
+  exerciseSpot?: { col: number; row: number };
   /** Storyline: wrong turns still to take before heading to the real destination. */
   lostDetours?: number;
   /** Storyline: idle wandering stays near this tile (a follower's leader). */
