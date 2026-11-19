@@ -45,6 +45,7 @@ export type ServerMessage =
   | DirectorySuggestions
   | SessionHistory
   | SessionResumeRejected
+  | SessionsDeleted
   | TerminalAvailability
   | TerminalSessionOpened
   | TerminalSessionClosed
@@ -82,6 +83,7 @@ export type ClientMessage =
   | RequestDirectorySuggestions
   | RequestSessionHistory
   | ResumeSession
+  | DeleteSessions
   | RequestDiagnostics;
 
 export interface ProviderCapabilities {
@@ -388,6 +390,17 @@ export interface SessionResumeRejected {
   reason: string;
 }
 
+export interface SessionsDeleted {
+  type: 'sessionsDeleted';
+  deleted: string[];
+  skipped: SessionDeleteSkipped[];
+}
+
+export interface SessionDeleteSkipped {
+  sessionId: string;
+  reason: string;
+}
+
 export interface TerminalAvailability {
   type: 'terminalAvailability';
   available: boolean;
@@ -568,6 +581,11 @@ export interface RequestSessionHistory {
 export interface ResumeSession {
   type: 'resumeSession';
   sessionId: string;
+}
+
+export interface DeleteSessions {
+  type: 'deleteSessions';
+  sessionIds: string[];
 }
 
 export interface RequestDiagnostics {

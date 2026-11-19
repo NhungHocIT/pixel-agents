@@ -66,6 +66,9 @@ export const DIRECTORY_SUGGESTION_LIMIT = 10;
 export const SESSION_HISTORY_LIMIT = 500;
 /** A session title (custom, AI-generated or first prompt) is clipped to this. */
 export const SESSION_HISTORY_TITLE_MAX = 120;
+/** A transcript written to this recently is not deleted: its CLI may still be
+ *  running in a window the office doesn't own, and would keep writing to it. */
+export const SESSION_DELETE_ACTIVE_GRACE_MS = 3 * 60_000;
 
 // ── Display Truncation + Pixel Agents Server paths ──────────
 // Centralized in core/src/constants.ts; re-exported here for back-compat.

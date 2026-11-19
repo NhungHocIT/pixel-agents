@@ -38,6 +38,9 @@ function formatWhen(iso: string): string {
   return `${pad(d.getHours())}:${pad(d.getMinutes())} ${pad(d.getDate())}/${pad(d.getMonth() + 1)}/${d.getFullYear()}`;
 }
 
+/** How long a "Xóa" button waits for its confirming second click. */
+const DELETE_CONFIRM_MS = 4000;
+
 function baseName(p: string): string {
   const parts = p.split(/[\\/]/).filter(Boolean);
   return parts[parts.length - 1] ?? p;
@@ -47,13 +50,25 @@ function baseName(p: string): string {
  * History tab: every past Claude session on the host, newest first, with the
  * tokens it spent. A row's "Tiếp tục" reopens the session in a new terminal
  * (`claude --resume`) in the directory it ran in; a session already open in the
- * office shows its agent instead.
+ * office shows its agent instead. "Xóa" (two clicks) permanently deletes a
+ * session's transcript; "Xóa tất cả" does the same for every listed session
+ * that isn't open. The host skips sessions that are open or still running.
  */
 export function HistoryModal({ isOpen, onClose, canResume, onShowAgent }: HistoryModalProps) {
   const [sessions, setSessions] = useState<SessionHistoryEntry[] | null>(null);
   const [query, setQuery] = useState('');
   const [pending, setPending] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
+  /** The delete waiting for its second click: a session id, or 'all'. */
+  const [confirming, setConfirming] = useState<string | null>(null);
+  const [deleting, setDeleting] = useState(false);
+
+  // An unconfirmed delete lapses, so a stray click later can't fire it.
+  useEffect(() => {
+    if (confirming === null) return;
+    const id = setTimeout(() => setConfirming(null), DELETE_CONFIRM_MS);
+    return () => clearTimeout(id);
+  }, [confirming]);
 
   useEffect(() => {
     return transport.onMessage((msg) => {
@@ -62,6 +77,14 @@ export function HistoryModal({ isOpen, onClose, canResume, onShowAgent }: Histor
       } else if (msg.type === 'sessionResumeRejected') {
         setPending(null);
         setError(msg.reason);
+      } else if (msg.type === 'sessionsDeleted') {
+        setDeleting(false);
+        const gone = new Set(msg.deleted);
+        setSessions((list) => list && list.filter((s) => !gone.has(s.sessionId)));
+        if (msg.skipped.length > 0) {
+          const reasons = [...new Set(msg.skipped.map((k) => k.reason))].join(' ');
+          setError(`Không xóa ${msg.skipped.length} phiên: ${reasons}`);
+        }
       } else if (msg.type === 'terminalSessionOpened') {
         // The resumed session's terminal is up: get out of its way.
         setPending((p) => {
@@ -77,6 +100,7 @@ export function HistoryModal({ isOpen, onClose, canResume, onShowAgent }: Histor
     if (!isOpen) return;
     setError(null);
     setPending(null);
+    setConfirming(null);
     transport.send({ type: 'requestSessionHistory' });
   }, [isOpen]);
 
@@ -98,6 +122,25 @@ export function HistoryModal({ isOpen, onClose, canResume, onShowAgent }: Histor
     }
     return { tokens, cost };
   }, [filtered]);
+
+  /** Listed sessions "Xóa tất cả" would delete: the open ones stay. */
+  const deletable = useMemo(
+    () => filtered.filter((s) => s.runningAgentId === undefined),
+    [filtered],
+  );
+
+  /** First click arms `key`, the second sends the delete. */
+  const remove = (key: string, sessionIds: string[]) => {
+    if (confirming !== key) {
+      setConfirming(key);
+      return;
+    }
+    setConfirming(null);
+    if (sessionIds.length === 0) return;
+    setError(null);
+    setDeleting(true);
+    transport.send({ type: 'deleteSessions', sessionIds });
+  };
 
   const resume = (s: SessionHistoryEntry) => {
     if (s.runningAgentId !== undefined) {
@@ -131,6 +174,23 @@ export function HistoryModal({ isOpen, onClose, canResume, onShowAgent }: Histor
           >
             ↻
           </Button>
+          {deletable.length > 0 && (
+            <Button
+              size="sm"
+              variant={deleting ? 'disabled' : confirming === 'all' ? 'active' : 'ghost'}
+              disabled={deleting}
+              onClick={() =>
+                remove(
+                  'all',
+                  deletable.map((s) => s.sessionId),
+                )
+              }
+              className="text-danger!"
+              title="Xóa vĩnh viễn mọi phiên trong danh sách (trừ phiên đang mở)"
+            >
+              {confirming === 'all' ? `Xóa ${deletable.length} phiên?` : 'Xóa tất cả'}
+            </Button>
+          )}
         </div>
 
         {sessions !== null && (
@@ -192,6 +252,20 @@ export function HistoryModal({ isOpen, onClose, canResume, onShowAgent }: Histor
                       title={running ? 'Phiên đang mở — xem agent' : 'Mở lại phiên này để làm tiếp'}
                     >
                       {running ? 'Đang mở' : isPending ? 'Đang mở…' : 'Tiếp tục'}
+                    </Button>
+                  )}
+                  {!running && (
+                    <Button
+                      size="sm"
+                      variant={
+                        deleting ? 'disabled' : confirming === s.sessionId ? 'active' : 'ghost'
+                      }
+                      disabled={deleting}
+                      onClick={() => remove(s.sessionId, [s.sessionId])}
+                      className="shrink-0 self-center text-danger!"
+                      title="Xóa vĩnh viễn phiên này khỏi máy"
+                    >
+                      {confirming === s.sessionId ? 'Xóa thật?' : 'Xóa'}
                     </Button>
                   )}
                 </li>

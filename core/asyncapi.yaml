@@ -124,6 +124,7 @@ components:
         # Session History
         - $ref: '#/components/schemas/SessionHistory'
         - $ref: '#/components/schemas/SessionResumeRejected'
+        - $ref: '#/components/schemas/SessionsDeleted'
         # Terminal (standalone embedded terminal control plane)
         - $ref: '#/components/schemas/TerminalAvailability'
         - $ref: '#/components/schemas/TerminalSessionOpened'
@@ -165,6 +166,7 @@ components:
         - $ref: '#/components/schemas/RequestDirectorySuggestions'
         - $ref: '#/components/schemas/RequestSessionHistory'
         - $ref: '#/components/schemas/ResumeSession'
+        - $ref: '#/components/schemas/DeleteSessions'
         - $ref: '#/components/schemas/RequestDiagnostics'
       discriminator: type
 
@@ -972,6 +974,35 @@ components:
         reason:
           type: string
 
+    SessionsDeleted:
+      description: |
+        Outcome of a `deleteSessions` (reply to the sender only): the sessions whose
+        transcripts were removed, and the ones left alone with why.
+      type: object
+      additionalProperties: false
+      required: [type, deleted, skipped]
+      properties:
+        type:
+          const: sessionsDeleted
+        deleted:
+          type: array
+          items:
+            type: string
+        skipped:
+          type: array
+          items:
+            $ref: '#/components/schemas/SessionDeleteSkipped'
+
+    SessionDeleteSkipped:
+      type: object
+      additionalProperties: false
+      required: [sessionId, reason]
+      properties:
+        sessionId:
+          type: string
+        reason:
+          type: string
+
     AgentDiagnostics:
       description: Connection diagnostics for all agents (response to requestDiagnostics).
       type: object
@@ -1446,6 +1477,22 @@ components:
           const: resumeSession
         sessionId:
           type: string
+
+    DeleteSessions:
+      description: >-
+        Permanently delete past sessions from the History tab: each one's transcript
+        and its sub-agent folder, located by the host's own index. A session open in
+        the office or written to very recently is skipped. Replied with `sessionsDeleted`.
+      type: object
+      additionalProperties: false
+      required: [type, sessionIds]
+      properties:
+        type:
+          const: deleteSessions
+        sessionIds:
+          type: array
+          items:
+            type: string
 
     SetShowAreas:
       description: Toggle the Areas overlay (translucent rendering on top of the office).

@@ -32,7 +32,7 @@ import type { ConsentEffects } from './providers/hook/consentExecutor.js';
 import { applyConsentChoice } from './providers/hook/consentExecutor.js';
 import { hooksConsentRequest } from './providers/hook/consentGate.js';
 import { claudeProvider, hookProviderById, hookProviders } from './providers/index.js';
-import { collectSessionHistory, findSessionInHistory } from './sessionHistory.js';
+import { collectSessionHistory, deleteSessions, findSessionInHistory } from './sessionHistory.js';
 import { closeAgentShell, hasAgentShell, openAgentShell } from './terminal/agentShell.js';
 import type { PtySessionManager } from './terminal/ptySessionManager.js';
 import { launchStandaloneAgent } from './terminal/standaloneAgentLauncher.js';
@@ -444,6 +444,27 @@ export function handleClientMessage(
         );
         if (id === null) reject('The terminal could not start.');
       })();
+      break;
+    }
+
+    case 'deleteSessions': {
+      const ids = Array.isArray(msg.sessionIds)
+        ? msg.sessionIds.filter((id): id is string => typeof id === 'string')
+        : [];
+      void deleteSessions(
+        claudeProvider,
+        ids,
+        (sessionId) => runningAgentIdFor(store, sessionId) !== undefined,
+      )
+        .then(({ deleted, skipped }) => send({ type: 'sessionsDeleted', deleted, skipped }))
+        .catch((err: unknown) => {
+          console.error(`[Pixel Agents] Session delete: ${String(err)}`);
+          send({
+            type: 'sessionsDeleted',
+            deleted: [],
+            skipped: ids.map((sessionId) => ({ sessionId, reason: String(err) })),
+          });
+        });
       break;
     }
 

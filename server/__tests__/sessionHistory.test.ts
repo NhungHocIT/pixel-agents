@@ -6,6 +6,7 @@ import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import {
   clearSessionHistoryCache,
   collectSessionHistory,
+  deleteSessions,
   summarizeTranscript,
 } from '../src/sessionHistory.js';
 
@@ -141,5 +142,68 @@ describe('collectSessionHistory', () => {
       expect(old.outputTokens).toBe(40);
       expect(old.cwd).toBe('/work/app');
     });
+  });
+});
+
+describe('deleteSessions', () => {
+  let root: string;
+  let projectDir: string;
+  const provider = () => ({ getAllSessionRoots: () => [root] });
+  const past = new Date('2026-01-01T00:00:00Z');
+
+  /** A session transcript with a sub-agent folder beside it, last written `at`. */
+  const writeSession = (id: string, at: Date = past) => {
+    fs.mkdirSync(path.join(projectDir, id, 'subagents'), { recursive: true });
+    fs.writeFileSync(
+      path.join(projectDir, id, 'subagents', 'agent-1.jsonl'),
+      assistant('s', usage),
+    );
+    const file = path.join(projectDir, `${id}.jsonl`);
+    fs.writeFileSync(
+      file,
+      [
+        line({ type: 'user', cwd: '/work/app', message: { content: id } }),
+        assistant(id, usage),
+      ].join('\n'),
+    );
+    fs.utimesSync(file, at, at);
+  };
+  const exists = (rel: string) => fs.existsSync(path.join(projectDir, rel));
+
+  beforeEach(() => {
+    root = fs.mkdtempSync(path.join(os.tmpdir(), 'pxl-history-test-'));
+    projectDir = path.join(root, 'proj');
+    clearSessionHistoryCache();
+  });
+
+  afterEach(() => {
+    fs.rmSync(root, { recursive: true, force: true });
+  });
+
+  it('removes the transcript and its sub-agent folder, and drops it from the list', async () => {
+    writeSession('gone');
+    writeSession('kept');
+    await collectSessionHistory(provider()); // warm the cache
+    const result = await deleteSessions(provider(), ['gone'], () => false);
+    expect(result).toEqual({ deleted: ['gone'], skipped: [] });
+    expect(exists('gone.jsonl')).toBe(false);
+    expect(exists('gone')).toBe(false);
+    expect(exists('kept.jsonl')).toBe(true);
+    const left = await collectSessionHistory(provider());
+    expect(left.map((e) => e.sessionId)).toEqual(['kept']);
+  });
+
+  it('skips sessions that are open, still running, or unknown', async () => {
+    writeSession('open');
+    writeSession('recent', new Date());
+    const result = await deleteSessions(
+      provider(),
+      ['open', 'recent', '../../etc'],
+      (id) => id === 'open',
+    );
+    expect(result.deleted).toEqual([]);
+    expect(result.skipped.map((k) => k.sessionId)).toEqual(['open', 'recent', '../../etc']);
+    expect(exists('open.jsonl')).toBe(true);
+    expect(exists('recent.jsonl')).toBe(true);
   });
 });

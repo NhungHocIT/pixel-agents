@@ -25,7 +25,11 @@ import * as fs from 'fs';
 import * as path from 'path';
 
 import type { HookProvider } from '../../core/src/provider.js';
-import { SESSION_HISTORY_LIMIT, SESSION_HISTORY_TITLE_MAX } from './constants.js';
+import {
+  SESSION_DELETE_ACTIVE_GRACE_MS,
+  SESSION_HISTORY_LIMIT,
+  SESSION_HISTORY_TITLE_MAX,
+} from './constants.js';
 
 export type HistoryProvider = Pick<HookProvider, 'getAllSessionRoots'>;
 
@@ -304,4 +308,56 @@ export async function findSessionInHistory(
   if (!/^[0-9a-fA-F-]{8,64}$/.test(sessionId)) return undefined;
   const all = await collectSessionHistory(provider);
   return all.find((e) => e.sessionId === sessionId);
+}
+
+export interface DeleteSessionsResult {
+  deleted: string[];
+  skipped: Array<{ sessionId: string; reason: string }>;
+}
+
+/**
+ * Permanently delete sessions: each one's transcript and the folder beside it
+ * (`<projectDir>/<sessionId>/` — sub-agents, tool results). Paths come from the
+ * host's own index, never the client. Left alone: a session the office is
+ * running (`isOpen`), and one written to within the grace period, whose CLI
+ * may be running in a window the office doesn't own.
+ */
+export async function deleteSessions(
+  provider: HistoryProvider,
+  sessionIds: readonly string[],
+  isOpen: (sessionId: string) => boolean,
+  now: number = Date.now(),
+): Promise<DeleteSessionsResult> {
+  const result: DeleteSessionsResult = { deleted: [], skipped: [] };
+  const byId = new Map((await collectSessionHistory(provider)).map((e) => [e.sessionId, e]));
+
+  for (const sessionId of new Set(sessionIds)) {
+    const skip = (reason: string) => result.skipped.push({ sessionId, reason });
+    const entry = byId.get(sessionId);
+    if (!entry) {
+      skip('Session not found.');
+      continue;
+    }
+    if (isOpen(sessionId)) {
+      skip('This session is open in the office.');
+      continue;
+    }
+    if (now - Date.parse(entry.lastActiveAt) < SESSION_DELETE_ACTIVE_GRACE_MS) {
+      skip('This session was active a moment ago and may still be running.');
+      continue;
+    }
+    const sideDir = path.join(path.dirname(entry.transcriptPath), sessionId);
+    try {
+      await fs.promises.rm(entry.transcriptPath, { force: true });
+      await fs.promises.rm(sideDir, { recursive: true, force: true });
+    } catch (err) {
+      skip(`Could not delete: ${String(err)}`);
+      continue;
+    }
+    for (const key of [...cache.keys()]) {
+      if (key === entry.transcriptPath || key.startsWith(sideDir + path.sep)) cache.delete(key);
+    }
+    result.deleted.push(sessionId);
+  }
+  return result;
 }
