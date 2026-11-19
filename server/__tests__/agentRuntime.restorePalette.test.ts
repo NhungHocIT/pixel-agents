@@ -111,6 +111,29 @@ describe('AgentRuntime -- restore preserves palette/hueShift', () => {
     expect(agent?.hueShift).toBe(90);
   });
 
+  it('leaves out an agent whose session stopped writing long ago', () => {
+    const old = new Date(Date.now() - 60 * 60_000);
+    fs.utimesSync(jsonlPath, old, old);
+    const store = new AgentStateStore();
+    store.setAdapter(
+      createMockAdapter([
+        {
+          id: 7,
+          sessionId: 'sess-ended',
+          terminalName: '',
+          isExternal: true,
+          jsonlFile: jsonlPath,
+          projectDir: tmpDir,
+        },
+      ]),
+    );
+    runtime = new AgentRuntime(store, claudeProvider);
+
+    runtime.restoreExternalAgents();
+
+    expect(store.get(7)).toBeUndefined();
+  });
+
   it('persist() writes palette/hueShift onto the record that restoreExternalAgents copies back', () => {
     // Phase 1: persist an agent with palette/hueShift and capture the
     // record the adapter received.

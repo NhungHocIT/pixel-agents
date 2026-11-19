@@ -36,6 +36,7 @@ import { startLolStatusPoller } from './lolStatus.js';
 import { claudeProvider, copyHookScript, hookProviderById } from './providers/index.js';
 import { PixelAgentsServer } from './server.js';
 import { PtySessionManager } from './terminal/ptySessionManager.js';
+import { launchStandaloneAgent } from './terminal/standaloneAgentLauncher.js';
 import { isLoopbackHost, normalizeHostname } from './wsAuth.js';
 
 // ── Argument parsing ──────────────────────────────────────────
@@ -54,6 +55,9 @@ export interface CliArgs {
   allowedHosts: string[];
   /** --rotate-token: replace the persisted server token before starting. */
   rotateToken: boolean;
+  /** --launch-agent: open a new Claude agent in a terminal once the server is
+   *  up, in the server's working directory. */
+  launchAgent: boolean;
 }
 
 /** Thrown by parseArgs on an invalid --port. Kept separate from process.exit so
@@ -67,6 +71,7 @@ export function parseArgs(argv: string[]): CliArgs {
     terminal: true,
     allowedHosts: [],
     rotateToken: false,
+    launchAgent: false,
   };
   for (let i = 0; i < argv.length; i++) {
     if (argv[i] === '--port' || argv[i] === '-p') {
@@ -103,6 +108,8 @@ export function parseArgs(argv: string[]): CliArgs {
       args.rotateToken = true;
     } else if (argv[i] === '--no-terminal') {
       args.terminal = false;
+    } else if (argv[i] === '--launch-agent') {
+      args.launchAgent = true;
     } else if (argv[i] === '--help') {
       console.log(`Usage: pixel-agents [options]
 
@@ -116,6 +123,8 @@ Options:
                         old one (bookmarks, other devices) stops working
   --no-terminal         Disable the embedded terminal (watch agents only; no
                         launching or attaching from the browser)
+  --launch-agent        Open a new Claude agent in the office on startup, in
+                        the current directory
   --help                Show this help message`);
       process.exit(0);
     }
@@ -406,6 +415,15 @@ async function main(): Promise<void> {
       runtime.startProjectScan(projectDir);
       runtime.startExternalScanning(projectDir);
       runtime.startStaleCheck();
+    }
+
+    // A fresh agent to work with as soon as the office opens. Fresh, never a
+    // resumed one: past sessions reopen only from the History tab.
+    if (args.launchAgent && ptyManager.isAvailable()) {
+      launchStandaloneAgent(
+        { store, runtime, ptyManager, provider: claudeProvider },
+        { bypassPermissions: adapter.getSetting('pixel-agents.bypassPermissions', false) },
+      );
     }
 
     // The URL the operator opens has to be REACHABLE (a wildcard bind address

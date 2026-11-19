@@ -358,6 +358,7 @@ function spawnPty(
   for (const [key, value] of Object.entries(process.env)) {
     if (value !== undefined) env[key] = value;
   }
+  stripAgentShellEnv(env);
   Object.assign(env, options.env ?? {}, { TERM: TERMINAL_TERM_NAME });
 
   const { command, args } =
@@ -379,6 +380,38 @@ function spawnPty(
     // for a real console window.
     useConptyDll: process.platform === 'win32',
   });
+}
+
+/** Variables a Claude Code session sets for the commands its agent runs.
+ *  Settings a user exports (CLAUDE_CODE_EXPERIMENTAL_AGENT_TEAMS, ...) are not
+ *  among them and pass through. */
+const AGENT_SHELL_ENV = [
+  'CLAUDECODE',
+  'CLAUDE_PID',
+  'CLAUDE_EFFORT',
+  'AI_AGENT',
+  'NO_COLOR',
+  'CLAUDE_CODE_ENTRYPOINT',
+  'CLAUDE_CODE_EXECPATH',
+  'CLAUDE_CODE_SESSION_ID',
+  'CLAUDE_CODE_SESSION_ATTENDED',
+  'CLAUDE_CODE_CHILD_SESSION',
+  'CLAUDE_CODE_CHILD_NOTES_DIR',
+  'CLAUDE_CODE_MESSAGING_SOCKET',
+  'CLAUDE_CODE_MESSAGING_TOKEN',
+];
+
+/**
+ * A server started from inside a Claude Code session (an agent restarting it)
+ * inherits that session's tool-shell environment, and every terminal it opened
+ * passed it on: NO_COLOR left each Claude colourless, and the session-identity
+ * variables told it that it was a child of the session that started the server.
+ * Dropped only when CLAUDECODE says that is where the server came from -- a
+ * NO_COLOR the user set in their own shell stays.
+ */
+export function stripAgentShellEnv(env: Record<string, string>): void {
+  if (env.CLAUDECODE === undefined) return;
+  for (const key of AGENT_SHELL_ENV) delete env[key];
 }
 
 /**

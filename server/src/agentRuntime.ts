@@ -15,6 +15,7 @@ import * as path from 'path';
 import type { HookProvider } from '../../core/src/provider.js';
 import { createAgentState } from './agentState.js';
 import type { AgentStateStore } from './agentStateStore.js';
+import { EXTERNAL_RESTORE_MAX_IDLE_MS } from './constants.js';
 import { DismissalTracker } from './dismissalTracker.js';
 import {
   adoptExternalSessionFromHook,
@@ -487,14 +488,20 @@ export class AgentRuntime {
       // is live. Restoring them directly would resurrect immortal characters
       // (also skips stale entries written by older builds that persisted them).
       if (p.leadAgentId !== undefined && !p.teamName) continue;
-      try {
-        if (!fs.existsSync(p.jsonlFile)) continue;
-      } catch {
-        continue;
-      }
       if (this.store.has(p.id)) {
         this.knownJsonlFiles.add(p.jsonlFile);
         if (p.id > maxId) maxId = p.id;
+        continue;
+      }
+      // Only a session still running comes back. An external agent leaves on
+      // its SessionEnd hook, which never arrives for a CLI that ended while no
+      // server was listening, so a persisted one may be long dead; restored, it
+      // would sit in the office as "open" with nothing behind it. A live session
+      // idle past the window is re-adopted by its next hook event.
+      try {
+        const idleMs = Date.now() - fs.statSync(p.jsonlFile).mtimeMs;
+        if (idleMs > EXTERNAL_RESTORE_MAX_IDLE_MS) continue;
+      } catch {
         continue;
       }
 

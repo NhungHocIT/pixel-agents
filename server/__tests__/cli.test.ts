@@ -133,6 +133,11 @@ describe('parseArgs', () => {
     });
   });
 
+  it('opens an agent on startup only with --launch-agent', () => {
+    expect(parseArgs([]).launchAgent).toBe(false);
+    expect(parseArgs(['--launch-agent']).launchAgent).toBe(true);
+  });
+
   // 12. --allowed-host is repeatable and validated; --rotate-token is a switch
   it('collects repeated --allowed-host values', () => {
     expect(parseArgs([]).allowedHosts).toEqual([]);

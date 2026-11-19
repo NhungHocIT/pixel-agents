@@ -5,7 +5,11 @@ import { describe, expect, it, vi } from 'vitest';
 
 import { TERMINAL_MIRROR_SCROLLBACK_LINES } from '../src/constants.js';
 import type { IPty, PtyModule, PtyModuleResolution } from '../src/terminal/ptyModule.js';
-import { PtySessionManager, resolveWindowsCommand } from '../src/terminal/ptySessionManager.js';
+import {
+  PtySessionManager,
+  resolveWindowsCommand,
+  stripAgentShellEnv,
+} from '../src/terminal/ptySessionManager.js';
 
 /**
  * Fake PTY. Tests never spawn a real process: they'd be slow, platform-specific,
@@ -413,5 +417,26 @@ describe('resolveWindowsCommand', () => {
   it('leaves an unresolvable command unchanged', () => {
     const env = { PATH: binDir([]), PATHEXT: '.exe' };
     expect(resolveWindowsCommand('claude', [], env)).toEqual({ command: 'claude', args: [] });
+  });
+});
+
+describe('stripAgentShellEnv', () => {
+  it("drops a parent Claude session's tool-shell variables, keeping the user's own", () => {
+    const env: Record<string, string> = {
+      CLAUDECODE: '1',
+      NO_COLOR: '1',
+      CLAUDE_CODE_SESSION_ID: 'parent',
+      CLAUDE_CODE_CHILD_SESSION: '1',
+      CLAUDE_CODE_EXPERIMENTAL_AGENT_TEAMS: '1',
+      PATH: '/bin',
+    };
+    stripAgentShellEnv(env);
+    expect(env).toEqual({ CLAUDE_CODE_EXPERIMENTAL_AGENT_TEAMS: '1', PATH: '/bin' });
+  });
+
+  it('keeps NO_COLOR the user set when the server was not started by an agent', () => {
+    const env: Record<string, string> = { NO_COLOR: '1', PATH: '/bin' };
+    stripAgentShellEnv(env);
+    expect(env).toEqual({ NO_COLOR: '1', PATH: '/bin' });
   });
 });
