@@ -146,6 +146,8 @@ describe('collectSessionHistory', () => {
 });
 
 describe('deleteSessions', () => {
+  /** Stands in for ~/.claude: transcripts under projects/, leftovers beside it. */
+  let configDir: string;
   let root: string;
   let projectDir: string;
   const provider = () => ({ getAllSessionRoots: () => [root] });
@@ -171,13 +173,37 @@ describe('deleteSessions', () => {
   const exists = (rel: string) => fs.existsSync(path.join(projectDir, rel));
 
   beforeEach(() => {
-    root = fs.mkdtempSync(path.join(os.tmpdir(), 'pxl-history-test-'));
+    configDir = fs.mkdtempSync(path.join(os.tmpdir(), 'pxl-history-test-'));
+    root = path.join(configDir, 'projects');
     projectDir = path.join(root, 'proj');
     clearSessionHistoryCache();
   });
 
   afterEach(() => {
-    fs.rmSync(root, { recursive: true, force: true });
+    fs.rmSync(configDir, { recursive: true, force: true });
+  });
+
+  it('also forgets the prompts typed in it and its edit snapshots', async () => {
+    writeSession('gone');
+    writeSession('kept');
+    const prompt = (sessionId: string, display: string) => line({ display, sessionId });
+    fs.writeFileSync(
+      path.join(configDir, 'history.jsonl'),
+      [prompt('gone', 'secret question'), prompt('kept', 'keep me'), prompt('gone', 'again')].join(
+        '\n',
+      ) + '\n',
+    );
+    fs.mkdirSync(path.join(configDir, 'file-history', 'gone'), { recursive: true });
+    fs.mkdirSync(path.join(configDir, 'session-env', 'kept'), { recursive: true });
+
+    await deleteSessions(provider(), ['gone'], () => false);
+
+    const history = fs.readFileSync(path.join(configDir, 'history.jsonl'), 'utf8');
+    expect(history).not.toContain('secret question');
+    expect(history).not.toContain('again');
+    expect(history).toContain('keep me');
+    expect(fs.existsSync(path.join(configDir, 'file-history', 'gone'))).toBe(false);
+    expect(fs.existsSync(path.join(configDir, 'session-env', 'kept'))).toBe(true);
   });
 
   it('removes the transcript and its sub-agent folder, and drops it from the list', async () => {

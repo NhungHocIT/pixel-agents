@@ -317,7 +317,8 @@ export interface DeleteSessionsResult {
 
 /**
  * Permanently delete sessions: each one's transcript and the folder beside it
- * (`<projectDir>/<sessionId>/` — sub-agents, tool results). Paths come from the
+ * (`<projectDir>/<sessionId>/` — sub-agents, tool results), then what the CLI
+ * keeps about it elsewhere (see pruneSessionLeftovers). Paths come from the
  * host's own index, never the client. Left alone: a session the office is
  * running (`isOpen`), and one written to within the grace period, whose CLI
  * may be running in a window the office doesn't own.
@@ -330,6 +331,7 @@ export async function deleteSessions(
 ): Promise<DeleteSessionsResult> {
   const result: DeleteSessionsResult = { deleted: [], skipped: [] };
   const byId = new Map((await collectSessionHistory(provider)).map((e) => [e.sessionId, e]));
+  const deletedByConfigDir = new Map<string, Set<string>>();
 
   for (const sessionId of new Set(sessionIds)) {
     const skip = (reason: string) => result.skipped.push({ sessionId, reason });
@@ -357,7 +359,65 @@ export async function deleteSessions(
     for (const key of [...cache.keys()]) {
       if (key === entry.transcriptPath || key.startsWith(sideDir + path.sep)) cache.delete(key);
     }
+    // <configDir>/projects/<projectDir>/<sessionId>.jsonl
+    const configDir = path.dirname(path.dirname(path.dirname(entry.transcriptPath)));
+    const ids = deletedByConfigDir.get(configDir) ?? new Set<string>();
+    ids.add(sessionId);
+    deletedByConfigDir.set(configDir, ids);
     result.deleted.push(sessionId);
   }
+
+  for (const [configDir, ids] of deletedByConfigDir) {
+    await pruneSessionLeftovers(configDir, ids);
+  }
   return result;
+}
+
+/**
+ * What the CLI keeps about a session outside its transcript: the prompts typed
+ * in it (`history.jsonl` — the ↑ / Ctrl+R recall, which would otherwise bring a
+ * deleted session's questions back the next day), its edit snapshots
+ * (`file-history/<id>`) and its env dump (`session-env/<id>`). Best effort: a
+ * leftover never fails the delete.
+ */
+export async function pruneSessionLeftovers(
+  configDir: string,
+  sessionIds: ReadonlySet<string>,
+): Promise<void> {
+  for (const sessionId of sessionIds) {
+    for (const sub of ['file-history', 'session-env']) {
+      await fs.promises
+        .rm(path.join(configDir, sub, sessionId), { recursive: true, force: true })
+        .catch(() => undefined);
+    }
+  }
+
+  const historyFile = path.join(configDir, 'history.jsonl');
+  let content: string;
+  try {
+    content = await fs.promises.readFile(historyFile, 'utf8');
+  } catch {
+    return;
+  }
+  const lines = content.split('\n');
+  const kept = lines.filter((line) => {
+    if (!line) return true;
+    try {
+      const id = (JSON.parse(line) as { sessionId?: unknown }).sessionId;
+      return typeof id !== 'string' || !sessionIds.has(id);
+    } catch {
+      return true;
+    }
+  });
+  if (kept.length === lines.length) return;
+  // Live CLIs append to this file. Read-filter-write is one tick of async I/O,
+  // and the write goes through a temp file so a crash never leaves half a file.
+  const tmp = `${historyFile}.${process.pid}.tmp`;
+  try {
+    await fs.promises.writeFile(tmp, kept.join('\n'), 'utf8');
+    await fs.promises.rename(tmp, historyFile);
+  } catch (err) {
+    await fs.promises.rm(tmp, { force: true }).catch(() => undefined);
+    console.warn(`[Pixel Agents] Session delete: history.jsonl not pruned: ${String(err)}`);
+  }
 }
